@@ -132,7 +132,6 @@ def main():
 
     conn = get_connection()
     cur = conn.cursor()
-    limpar_dados_banco(cur=cur)
     print("\n[1/9] Tabelas de domínio / lookup...")
     try:
         tipos_usuario = popular_tipos_usuarios(cur)

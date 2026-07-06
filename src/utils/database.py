@@ -2,24 +2,47 @@
 # ==============================================================================
 # EcoCiente – camada de acesso a dados para a carga inicial de massa
 # ==============================================================================
-# Mudanças em relação à versão anterior (motivadas pela nova modelagem DBML):
+# Mudanças em relação à versão anterior (motivadas pela sincronização da
+# modelagem DBML com o script SQL consolidado):
 #
-#  1. Class Table Inheritance real:
+#  1. Gamificação por pontos REMOVIDA do modelo lógico:
+#       - regras_pontuacao e historico_pontuacao deixaram de existir.
+#       - moradores.pontuacao_acumulada deixou de existir.
+#       - popular_regras_pontuacao() e criar_bonus_pontuacao() foram REMOVIDAS.
+#       - criar_morador() não grava mais pontuacao_acumulada.
+#
+#  2. Moderação de postagem REMOVIDA do modelo lógico:
+#       - postagens.status_postagem e postagens.pontos_gerados deixaram de
+#         existir; a procedure sp_validar_postagem foi removida do banco.
+#       - criar_postagem() não grava mais status_postagem/pontos_gerados.
+#       - validar_postagem() foi REMOVIDA (não há mais o que chamar).
+#
+#  3. Auditoria agora é Class Table Inheritance (supertipo auditoria_log +
+#     subtipos auditoria_postagens / auditoria_agendamentos_coletas /
+#     auditoria_usuarios_condominios), alimentada 100% pelas triggers
+#     trg_auditoria_postagens / trg_auditoria_agendamentos_coletas /
+#     trg_auditoria_usuarios_condominios. O Python nunca insere manualmente
+#     em nenhuma dessas 4 tabelas — apenas realiza o INSERT/UPDATE/DELETE na
+#     tabela de negócio, e o banco cuida do resto.
+#
+#  4. Class Table Inheritance de usuários (síndicos, usuarios_comuns,
+#     moradores, cooperativas) permanece igual à versão anterior:
 #       - criar_subtipo_sindico(cur, usuario_id)       → INSERT em sindicos,
 #         retorna id_sindico (usado como FK em condominios.sindico_id)
 #       - criar_subtipo_usuario_comum(cur, usuario_id) → INSERT em usuarios_comuns,
 #         retorna id_usuario_comum
-#     Cooperativas e moradores já tinham tabela própria e não mudaram.
+#     Cooperativas e moradores já tinham tabela própria e não mudaram de
+#     estrutura (exceto pela remoção de pontuacao_acumulada em moradores).
 #
-#  2. criar_condominio: coluna renomeada de sindico_usuario_id → sindico_id,
-#     que agora referencia sindicos.id_sindico (não mais usuarios diretamente).
+#  5. limpar_dados_banco: removidas historico_pontuacao e regras_pontuacao da
+#     lista de truncate (tabelas que não existem mais); adicionadas
+#     auditoria_postagens, auditoria_agendamentos_coletas e
+#     auditoria_usuarios_condominios (subtipos novos da herança de auditoria),
+#     truncadas antes de auditoria_log (filhos antes do pai).
 #
-#  3. limpar_dados_banco: adicionadas sindicos e usuarios_comuns à lista de
-#     truncate, na ordem correta de dependência.
-#
-#  Tudo o mais (postagens, agendamentos, visitas, cursos, notificações, etc.)
-#  permanece idêntico: as procedures / triggers do banco continuam sendo
-#  invocadas da mesma forma.
+#  Tudo o mais (avisos, agendamentos, visitas, recorrências, avaliações,
+#  cursos/aulas, notificações, tabelas de domínio) permanece idêntico: as
+#  procedures/triggers do banco continuam sendo invocadas da mesma forma.
 # ==============================================================================
 
 import os
@@ -227,32 +250,6 @@ def popular_categorias_residuos(cur):
     return ids
 
 
-def popular_regras_pontuacao(cur):
-    regras = [
-        ("postagem_reciclagem", 10,
-         "Postagem de descarte validada pela cooperativa/síndico"),
-        ("conclusao_aula",      5,
-         "Conclusão de uma aula dentro de um curso"),
-        ("coleta_realizada",   15,
-         "Confirmação de coleta efetivamente realizada"),
-        ("bonus",               0,
-         "Bônus manual atribuído por administrador "
-         "(valor definido no momento do lançamento)"),
-    ]
-    for tipo_evento, pontos, desc in regras:
-        cur.execute(
-            "SELECT 1 FROM regras_pontuacao WHERE tipo_evento = %s",
-            (tipo_evento,),
-        )
-        if cur.fetchone():
-            continue
-        cur.execute(
-            """INSERT INTO regras_pontuacao (tipo_evento, pontos, descricao, ativo)
-               VALUES (%s, %s, %s, TRUE)""",
-            (tipo_evento, pontos, desc),
-        )
-
-
 # ==============================================================================
 # 2. ENDEREÇOS E USUÁRIOS (+ SUBTIPOS DE HERANÇA)
 # ==============================================================================
@@ -358,8 +355,8 @@ def proximo_codigo_acesso():
 
 def criar_condominio(cur, tipo_condominio_id, sindico_id, nome_fantasia, comercial=False):
     """
-    sindico_id: id_sindico da tabela sindicos (FK do novo modelo),
-    NÃO mais o usuario_id direto.
+    sindico_id: id_sindico da tabela sindicos (FK do modelo com herança),
+    NÃO o usuario_id direto.
     """
     endereco_id  = criar_endereco(cur)
     cnpj         = fk.cnpj() if comercial else (fk.cnpj() if fk.boolean(20) else None)
@@ -400,11 +397,15 @@ def criar_morador(cur, usuario_id, unidade_id):
     """
     Insere na tabela moradores (subtipo de usuarios).
     Retorna id_morador.
+
+    A modelagem atual não possui mais pontuacao_acumulada — o cache de
+    pontuação/ranking saiu do relacional (era alimentado por
+    historico_pontuacao, que deixou de existir) e não é mais gravado aqui.
     """
     return fetch_id(
         cur,
-        """INSERT INTO moradores (usuario_id, unidade_id, pontuacao_acumulada)
-           VALUES (%s, %s, 0) RETURNING id_morador""",
+        """INSERT INTO moradores (usuario_id, unidade_id)
+           VALUES (%s, %s) RETURNING id_morador""",
         (usuario_id, unidade_id),
     )
 
@@ -413,6 +414,10 @@ def criar_vinculo_condominio(cur, usuario_id, condominio_id, aprovado_por_usuari
     """
     aprovado_por_usuario_id: usuarios.id_usuario (o síndico como usuário,
     não o id_sindico da tabela sindicos).
+
+    Todo INSERT/UPDATE nesta tabela dispara trg_auditoria_usuarios_condominios,
+    que grava automaticamente em auditoria_log + auditoria_usuarios_condominios
+    (aprovado_anterior/novo, data_saida_anterior/novo).
     """
     data_entrada = fk.date_time_between(700, 30)
     aprovado     = fk.boolean(92)
@@ -497,29 +502,28 @@ def vincular_categorias_ponto_coleta(cur, ponto_coleta_id, categoria_ids_recicla
 
 
 # ==============================================================================
-# 5. POSTAGENS DE DESCARTE (usa sp_validar_postagem)
+# 5. POSTAGENS DE DESCARTE
 # ==============================================================================
 
 def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem):
+    """
+    A modelagem atual não possui mais status_postagem/pontos_gerados (a
+    moderação de descarte e a procedure sp_validar_postagem foram removidas
+    do banco) — a postagem nasce e permanece só com os dados de origem.
+
+    Todo INSERT/UPDATE/DELETE nesta tabela dispara trg_auditoria_postagens,
+    que grava automaticamente em auditoria_log + auditoria_postagens.
+    """
     return fetch_id(
         cur,
         """INSERT INTO postagens
-               (usuario_id, condominio_id, categoria_id, url_foto,
-                status_postagem, pontos_gerados, data_postagem)
-           VALUES (%s, %s, %s, %s, 'P', NULL, %s)
+               (usuario_id, condominio_id, categoria_id, url_foto, data_postagem)
+           VALUES (%s, %s, %s, %s, %s)
            RETURNING id_postagem""",
         (
             usuario_id, condominio_id, categoria_id,
             fk.url(path="postagens", ext="jpg"), data_postagem,
         ),
-    )
-
-
-def validar_postagem(cur, postagem_id, novo_status, validado_por_usuario_id):
-    call_procedure(
-        cur,
-        "CALL sp_validar_postagem(%s, %s, %s)",
-        (postagem_id, novo_status, validado_por_usuario_id),
     )
 
 
@@ -555,6 +559,12 @@ def criar_aviso(cur, condominio_id, criado_por_usuario_id, tipo_aviso_id):
 
 def criar_agendamento(cur, condominio_id, cooperativa_id,
                       status_agendamento_id, recorrente):
+    """
+    Todo INSERT/UPDATE/DELETE nesta tabela dispara
+    trg_auditoria_agendamentos_coletas, que grava automaticamente em
+    auditoria_log + auditoria_agendamentos_coletas (status e datas
+    antes/depois).
+    """
     data_inicio = fk.date_time_between(180, 0)
     data_fim    = data_inicio + timedelta(hours=2)
     # possui_recorrencia: se recorrente=False não haverá INSERT em
@@ -572,6 +582,10 @@ def criar_agendamento(cur, condominio_id, cooperativa_id,
 
 
 def criar_recorrencia(cur, agendamento_coleta_id, dia_semana_id):
+    """
+    O INSERT nesta tabela dispara trg_atualizar_recorrencia_insert, que
+    recalcula agendamentos_coletas.possui_recorrencia.
+    """
     cur.execute(
         """INSERT INTO recorrencias_agendamentos
                (agendamento_coleta_id, dia_semana_id)
@@ -623,7 +637,7 @@ def criar_avaliacao_visita(cur, visita_coleta_id, usuario_avaliador_id):
 
 
 # ==============================================================================
-# 8. CURSOS, AULAS E PROGRESSO (trigger trg_pontuar_conclusao_curso)
+# 8. CURSOS, AULAS E PROGRESSO
 # ==============================================================================
 
 def popular_cursos_e_aulas(cur):
@@ -702,7 +716,11 @@ def popular_cursos_e_aulas(cur):
 def matricular_usuario_em_aulas(cur, usuario_id, lista_aula_ids):
     """
     INSERT com concluido=FALSE → UPDATE para TRUE (quando aplicável).
-    O UPDATE é quem dispara trg_pontuar_conclusao_curso (AFTER UPDATE).
+
+    A modelagem atual não possui mais gamificação por pontos: o UPDATE
+    apenas registra a conclusão (concluido/data_conclusao) e não dispara
+    mais nenhuma trigger de pontuação (historico_pontuacao deixou de
+    existir).
     """
     progresso = []
     for aula_id in lista_aula_ids:
@@ -731,7 +749,7 @@ def matricular_usuario_em_aulas(cur, usuario_id, lista_aula_ids):
 
 
 # ==============================================================================
-# 9. NOTIFICAÇÕES E HISTÓRICO DE PONTUAÇÃO (bônus manual)
+# 9. NOTIFICAÇÕES
 # ==============================================================================
 
 def criar_notificacoes_usuario(cur, usuario_id, qtd):
@@ -761,24 +779,6 @@ def criar_notificacoes_usuario(cur, usuario_id, qtd):
         )
 
 
-def criar_bonus_pontuacao(cur, usuario_id, condominio_id, sindico_usuario_id):
-    """
-    sindico_usuario_id: usuarios.id_usuario do síndico (referencia_id de bônus manual).
-    A trigger trg_atualizar_pontuacao_morador atualiza moradores.pontuacao_acumulada.
-    """
-    pontos = rng.choice([5, 10, 15, 20])
-    cur.execute(
-        """INSERT INTO historico_pontuacao
-               (usuario_id, condominio_id, tipo_evento, pontos,
-                referencia_id, referencia_tipo, criado_em)
-           VALUES (%s, %s, 'bonus', %s, %s, 'bonus_manual', %s)""",
-        (
-            usuario_id, condominio_id, pontos,
-            sindico_usuario_id, fk.date_time_between(60, 0),
-        ),
-    )
-
-
 # ==============================================================================
 # ATOMICIDADE / LIMPEZA
 # ==============================================================================
@@ -786,12 +786,25 @@ def criar_bonus_pontuacao(cur, usuario_id, condominio_id, sindico_usuario_id):
 def limpar_dados_banco(cur):
     """
     TRUNCATE em ordem de dependência (filhos antes dos pais).
-    Inclui sindicos e usuarios_comuns, novos subtipos da v2.
+
+    Inclui sindicos e usuarios_comuns (subtipos de usuarios) e os 3 subtipos
+    de auditoria (auditoria_postagens, auditoria_agendamentos_coletas,
+    auditoria_usuarios_condominios), truncados antes do supertipo
+    auditoria_log. historico_pontuacao e regras_pontuacao NÃO aparecem mais
+    aqui: deixaram de existir na modelagem atual.
+
+    Tabelas de domínio/lookup (tipos_usuarios, tipos_condominios,
+    tipos_avisos, status_agendamentos, dias_semanas, categorias_residuos,
+    tipos_eventos_auditados, tipos_operacoes_auditoria) são mantidas
+    propositalmente fora desta lista: são seeds fixos, populados uma única
+    vez e reaproveitados entre execuções.
     """
     tabelas = [
         "notificacoes",
+        "auditoria_postagens",
+        "auditoria_agendamentos_coletas",
+        "auditoria_usuarios_condominios",
         "auditoria_log",
-        "historico_pontuacao",
         "postagens",
         "avaliacoes_visitas_coletas",
         "visitas_coletas",
@@ -802,13 +815,13 @@ def limpar_dados_banco(cur):
         "cursos",
         "avisos",
         "usuarios_condominios",
-        "moradores",            
-        "usuarios_comuns",     
-        "sindicos",            
+        "moradores",
+        "usuarios_comuns",
+        "sindicos",
         "unidades",
         "torres",
         "condominios",
-        "cooperativas",         
+        "cooperativas",
         "pontos_coletas",
         "cooperativas_categorias_materiais",
         "pontos_coletas_categorias",
