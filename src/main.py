@@ -3,82 +3,114 @@ main.py
 ================================================================================
 EcoCiente - Massa de Dados (Carga Inicial)
 ================================================================================
-Popula o schema PostgreSQL do EcoCiente (modelagem lógica v2 + objetos lógicos
-de otimização: functions, procedures, triggers de auditoria) com dados
-fictícios em pt_BR, usando a classe FakerBR (faker_br.py).
+Popula o schema PostgreSQL do EcoCiente (modelagem lógica atual, implementada
+em ecociente_schema.sql) com dados fictícios em pt_BR, usando a classe
+FakerBR (faker_br.py), através das funções de utils/database.py.
 
-PRÉ-REQUISITOS (rodar antes deste script, na ordem):
-    1. DDL do modelo lógico (CREATE TABLE de todas as tabelas do DBML).
-    2. ecociente_objetos_logicos_otimizacao.sql
-       (cria regras_pontuacao, avaliacoes_visitas_coletas, auditoria_log,
-        functions, procedures e triggers).
+PRÉ-REQUISITO (rodar antes deste script):
+    ecociente_schema.sql — script único e completo: DDL de todas as tabelas
+    do DBML, FKs, CHECKs, a procedure sp_confirmar_passagem_cooperativa, as
+    triggers de auditoria (postagens / agendamentos_coletas /
+    usuarios_condominios) e a trigger de cache de recorrência
+    (agendamentos_coletas.possui_recorrencia).
 
-Este script SEMPRE prefere usar as functions/procedures/triggers já criadas
-em vez de simular a regra de negócio em Python, para a massa de dados nascer
-100% consistente com o que a aplicação real faria:
-    - Moderação de postagem  -> CALL sp_validar_postagem(...)
+Este script usa a procedure já existente no banco para a confirmação de
+passagem da cooperativa, em vez de simular a regra de negócio em Python:
     - Confirmação de visita  -> CALL sp_confirmar_passagem_cooperativa(...)
-    - pontuacao_acumulada    -> atualizado pela trigger trg_atualizar_pontuacao_morador
-    - possui_recorrencia     -> atualizado pela trigger trg_atualizar_recorrencia_*
-    - pontuação por conclusão de aula -> trigger trg_pontuar_conclusao_curso
+    - possui_recorrencia     -> atualizado automaticamente pelas triggers
+                                  trg_atualizar_recorrencia_insert/delete
     - auditoria_log          -> alimentada automaticamente pelas triggers de
                                   auditoria em postagens / agendamentos_coletas /
-                                  usuarios_condominios (não inserimos nela na mão)
+                                  usuarios_condominios (nenhuma linha é
+                                  inserida nela manualmente por este script)
 
-A conexão é mantida em autocommit=True. Isso é proposital: as procedures
-sp_validar_postagem e sp_confirmar_passagem_cooperativa fazem COMMIT dentro
-do próprio corpo PL/pgSQL (procedure top-level), o que só é seguro fora de
-um bloco de transação aberto manualmente pelo client.
+A conexão é obtida via utils.helpers.get_connection(), que já devolve a
+conexão em autocommit=True. Isso simplifica o tratamento de erro: cada
+INSERT/CALL já fica persistido imediatamente, sem depender de um COMMIT
+manual ao final do script — por isso, em caso de exceção, o bloco de
+tratamento chama limpar_dados_banco(cur) para descartar o que já tiver sido
+gravado nesta execução.
 
-Mudanças v2 (class table inheritance):
+A modelagem atual (class table inheritance) NÃO possui sistema de
+pontuação/gamificação nem moderação de postagem:
+    - Não existem as tabelas historico_pontuacao / regras_pontuacao.
+    - Não existe a procedure sp_validar_postagem, nem as colunas
+      status_postagem / pontos_gerados / validado_por_usuario_id /
+      validado_em em postagens — toda postagem nasce e permanece só com os
+      dados de origem (usuario_id, condominio_id, categoria_id, url_foto,
+      data_postagem).
     - Síndicos: criar_usuario → criar_subtipo_sindico → retorna id_sindico
-      (usado como FK em condominios.sindico_id, não mais o usuario_id direto).
+      (usado como FK em condominios.sindico_id, não o usuario_id direto).
     - Usuários Comuns: criar_usuario → criar_subtipo_usuario_comum.
-    - criar_condominio: parâmetro renomeado de sindico_usuario_id → sindico_id,
-      que agora recebe o id_sindico da tabela sindicos.
-    - criar_cooperativa: não recebe mais coop_nome como parâmetro externo;
-      retorna (cooperativa_id, nome) diretamente.
+    - criar_condominio recebe sindico_id (sindicos.id_sindico), não o
+      usuario_id direto.
+    - criar_cooperativa não recebe nome externo; retorna (cooperativa_id, nome).
 
 Instalação:
     pip install psycopg2-binary --break-system-packages
 
 Uso:
     python main.py
-    (edite utils.helpers.DB_CONFIG abaixo ou exporte a variável de ambiente ECOCIENTE_DSN)
+    (configure utils.helpers.DB_CONFIG ou exporte ECOCIENTE_DSN /
+     ECOCIENTE_DB_HOST / ECOCIENTE_DB_PORT / ECOCIENTE_DB_NAME /
+     ECOCIENTE_DB_USER / ECOCIENTE_DB_PASSWORD / ECOCIENTE_DB_SSLMODE)
 ================================================================================
 """
 
-import os
 import sys
-import random
-from datetime import timedelta
 
-from utils.helpers import get_connection, fetch_id, call_procedure
+from utils.helpers import get_connection
+
+try:
+    import psycopg2  # noqa: F401  (checagem antecipada de dependência instalada)
+except ImportError:
+    print("Este script requer psycopg2. Instale com:")
+    print("    pip install psycopg2-binary --break-system-packages")
+    sys.exit(1)
+
 from utils.database import (
+    # config / volumetria (fonte única: utils/database.py, evita duplicação
+    # e divergência de constantes entre os dois módulos)
+    SEED,
+    N_CONDOMINIOS_RESIDENCIAL,
+    N_CONDOMINIOS_COMERCIAL,
+    N_COOPERATIVAS,
+    N_USUARIOS_COMUM,
+    TORRES_POR_RESIDENCIAL,
+    UNIDADES_POR_TORRE,
+    UNIDADES_POR_COMERCIAL,
+    CHANCE_UNIDADE_OCUPADA,
+    PONTOS_COLETA_POR_COOPERATIVA,
+    POSTAGENS_POR_OCUPANTE,
+    NOTIFICACOES_POR_USUARIO,
+    AGENDAMENTOS_POR_CONDOMINIO,
+    VISITAS_POR_AGENDAMENTO,
+    # instâncias compartilhadas de FakerBR/Random (mesmo SEED, um único
+    # stream de aleatoriedade entre database.py e main.py)
+    fk,
+    rng,
+    # funções de geração de massa
     popular_tipos_usuarios,
     popular_tipos_condominios,
     popular_tipos_avisos,
     popular_dias_semana,
     popular_categorias_residuos,
     popular_status_agendamentos,
-    popular_regras_pontuacao,
-    criar_endereco,
     criar_usuario,
-    criar_subtipo_sindico,          # [NOVO v2] subtipo síndico
-    criar_subtipo_usuario_comum,    # [NOVO v2] subtipo usuário comum
+    criar_subtipo_sindico,
+    criar_subtipo_usuario_comum,
     criar_condominio,
     criar_torre,
     criar_unidade,
     criar_morador,
     criar_vinculo_condominio,
     criar_aviso,
+    criar_cooperativa,
     criar_ponto_coleta,
     vincular_categorias_cooperativa,
     vincular_categorias_ponto_coleta,
     popular_cursos_e_aulas,
     criar_postagem,
-    validar_postagem,
-    criar_bonus_pontuacao,
     criar_agendamento,
     criar_recorrencia,
     criar_visita,
@@ -86,39 +118,8 @@ from utils.database import (
     criar_avaliacao_visita,
     matricular_usuario_em_aulas,
     criar_notificacoes_usuario,
-    criar_cooperativa,
     limpar_dados_banco,
 )
-
-try:
-    import psycopg2
-except ImportError:
-    print("Este script requer psycopg2. Instale com:")
-    print(" \033[034m   pip install psycopg2-binary --break-system-packages\033[0m")
-    sys.exit(1)
-
-from utils.faker_br import FakerBR
-from utils.database import SEED
-
-fk = FakerBR(seed=SEED)
-rng = random.Random(SEED)
-
-# VOLUMETRIA
-N_CONDOMINIOS_RESIDENCIAL = 4
-N_CONDOMINIOS_COMERCIAL = 2
-N_COOPERATIVAS = 3
-N_USUARIOS_COMUM = 12
-
-TORRES_POR_RESIDENCIAL = (2, 3)          # (min, max) torres por condomínio residencial
-UNIDADES_POR_TORRE = (4, 8)              # (min, max) unidades por torre
-UNIDADES_POR_COMERCIAL = (5, 10)         # unidades diretas (sem torre) em condomínio comercial
-CHANCE_UNIDADE_OCUPADA = 80              # % de chance da unidade ter morador/ocupante
-
-PONTOS_COLETA_POR_COOPERATIVA = (2, 3)
-POSTAGENS_POR_OCUPANTE = (0, 6)
-NOTIFICACOES_POR_USUARIO = (2, 5)
-AGENDAMENTOS_POR_CONDOMINIO = (1, 2)
-VISITAS_POR_AGENDAMENTO = (2, 5)
 
 
 # ==============================================================================
@@ -132,7 +133,6 @@ def main():
 
     conn = get_connection()
     cur = conn.cursor()
-    limpar_dados_banco(cur=cur)
     print("\n[1/9] Tabelas de domínio / lookup...")
     try:
         tipos_usuario = popular_tipos_usuarios(cur)
@@ -141,17 +141,14 @@ def main():
         dias_semana = popular_dias_semana(cur)
         status_agendamento = popular_status_agendamentos(cur)
         categorias = popular_categorias_residuos(cur)
-        popular_regras_pontuacao(cur)
         categorias_reciclaveis = [cid for nome, cid in categorias.items() if nome != "Rejeito"]
 
         print("[2/9] Cursos e aulas (apenas os 2 cursos do domínio)...")
         cursos_ids, aulas_por_curso = popular_cursos_e_aulas(cur)
-        todas_aulas = [aid for lst in aulas_por_curso.values() for aid in lst]
 
         print("[3/9] Usuários comuns...")
         usuarios_comuns = []
         for _ in range(N_USUARIOS_COMUM):
-            # [v2] criar_usuario → criar_subtipo_usuario_comum
             uid, _ = criar_usuario(cur, tipos_usuario["Usuário Comum"])
             criar_subtipo_usuario_comum(cur, uid)
             usuarios_comuns.append(uid)
@@ -160,7 +157,6 @@ def main():
         cooperativas = []  # (cooperativa_id, nome, usuario_id)
         for _ in range(N_COOPERATIVAS):
             u_coop, _ = criar_usuario(cur, tipos_usuario["Cooperativa"])
-            # [v2] criar_cooperativa não recebe mais nome externo; retorna (id, nome)
             coop_id, coop_nome = criar_cooperativa(cur, u_coop)
             vincular_categorias_cooperativa(cur, coop_id, categorias_reciclaveis)
             for _ in range(rng.randint(*PONTOS_COLETA_POR_COOPERATIVA)):
@@ -169,17 +165,15 @@ def main():
             cooperativas.append((coop_id, coop_nome, u_coop))
 
         print("[5/9] Condomínios residenciais + torres + unidades + moradores...")
-        # [v2] ocupantes agora carrega sindico_id (id_sindico) além de sindico_usuario_id
-        ocupantes = []  # lista de dicts: usuario_id, condominio_id, morador_id,
-                        #                 sindico_usuario_id, sindico_id
+        # ocupantes: lista de dicts com usuario_id, condominio_id, morador_id,
+        # sindico_usuario_id (usuarios.id_usuario) e sindico_id (sindicos.id_sindico)
+        ocupantes = []
         condominios_residenciais = []
         for i in range(N_CONDOMINIOS_RESIDENCIAL):
             sindico_usuario_id, sindico_nome = criar_usuario(cur, tipos_usuario["Síndico Residencial"])
-            # [v2] registra o subtipo e obtém id_sindico para usar como FK em condominios
             sindico_id = criar_subtipo_sindico(cur, sindico_usuario_id)
 
             nome_condominio = f"Condomínio {fk.street_name()}"
-            # [v2] criar_condominio recebe sindico_id (sindicos.id_sindico)
             condominio_id = criar_condominio(
                 cur, tipos_condominio["Residencial"], sindico_id, nome_condominio, comercial=False
             )
@@ -194,17 +188,16 @@ def main():
                         tipo_ocupante = tipos_usuario["Morador Residencial"]
                         uid, _ = criar_usuario(cur, tipo_ocupante)
                         morador_id = criar_morador(cur, uid, unidade_id)
-                        # aprovado_por_usuario_id ainda referencia usuarios.id_usuario
                         criar_vinculo_condominio(cur, uid, condominio_id, aprovado_por_usuario_id=sindico_usuario_id)
                         ocupantes.append({
                             "usuario_id": uid,
                             "condominio_id": condominio_id,
                             "morador_id": morador_id,
-                            "sindico_usuario_id": sindico_usuario_id,  # para avisos / vínculos
-                            "sindico_id": sindico_id,                   # FK de condominios [v2]
+                            "sindico_usuario_id": sindico_usuario_id,
+                            "sindico_id": sindico_id,
                         })
 
-            # avisos do síndico — criado_por_usuario_id aponta para usuarios diretamente
+            # avisos do síndico: criado_por_usuario_id aponta para usuarios diretamente
             for _ in range(rng.randint(2, 5)):
                 criar_aviso(cur, condominio_id, sindico_usuario_id, fk.random_element(list(tipos_aviso.values())))
 
@@ -213,11 +206,9 @@ def main():
 
         for i in range(N_CONDOMINIOS_COMERCIAL):
             sindico_usuario_id, _ = criar_usuario(cur, tipos_usuario["Síndico Comercial"])
-            # [v2] subtipo síndico → id_sindico para FK em condominios
             sindico_id = criar_subtipo_sindico(cur, sindico_usuario_id)
 
             nome_condominio = f"Edifício Comercial {fk.street_name()}"
-            # [v2] criar_condominio recebe sindico_id (sindicos.id_sindico)
             condominio_id = criar_condominio(
                 cur, tipos_condominio["Comercial"], sindico_id, nome_condominio, comercial=True
             )
@@ -245,31 +236,19 @@ def main():
 
         print(f"      -> {len(ocupantes)} ocupantes (moradores/usuários comerciais) gerados.")
 
-        print("[7/9] Postagens de descarte (validadas via sp_validar_postagem)...")
-        qtd_aprovadas = qtd_rejeitadas = qtd_pendentes = 0
+        print("[7/9] Postagens de descarte...")
+        # Todo
+        # INSERT dispara trg_auditoria_postagens, que grava automaticamente
+        # em auditoria_log + auditoria_postagens.
+        qtd_postagens = 0
         for ocupante in ocupantes:
-            qtd_postagens = rng.randint(*POSTAGENS_POR_OCUPANTE)
-            for _ in range(qtd_postagens):
+            for _ in range(rng.randint(*POSTAGENS_POR_OCUPANTE)):
                 categoria_id = fk.random_element(categorias_reciclaveis)
                 data_postagem = fk.date_time_between(90, 0)
-                postagem_id = criar_postagem(cur, ocupante["usuario_id"], ocupante["condominio_id"], categoria_id, data_postagem)
+                criar_postagem(cur, ocupante["usuario_id"], ocupante["condominio_id"], categoria_id, data_postagem)
+                qtd_postagens += 1
 
-                sorteio = rng.random()
-                if sorteio < 0.60:
-                    # validado_por_usuario_id → usuarios.id_usuario do síndico
-                    validar_postagem(cur, postagem_id, "A", ocupante["sindico_usuario_id"])
-                    qtd_aprovadas += 1
-                elif sorteio < 0.85:
-                    validar_postagem(cur, postagem_id, "R", ocupante["sindico_usuario_id"])
-                    qtd_rejeitadas += 1
-                else:
-                    qtd_pendentes += 1  # fica como 'P', simula fila de moderação real
-
-            # bônus ocasional do síndico
-            if fk.boolean(15):
-                criar_bonus_pontuacao(cur, ocupante["usuario_id"], ocupante["condominio_id"], ocupante["sindico_usuario_id"])
-
-        print(f"      -> postagens: {qtd_aprovadas} aprovadas | {qtd_rejeitadas} rejeitadas | {qtd_pendentes} pendentes")
+        print(f"      -> {qtd_postagens} postagens criadas.")
 
         print("[8/9] Agendamentos, recorrências, visitas e avaliações...")
         qtd_visitas_confirmadas = qtd_visitas_recusadas = qtd_visitas_futuras = 0
@@ -308,7 +287,7 @@ def main():
                                 criar_avaliacao_visita(cur, visita_id, sindico_da_visita)
                                 qtd_avaliacoes += 1
                     else:
-                        qtd_visitas_futuras += 1  # fica com houve_confirmacao = NULL (pendente)
+                        qtd_visitas_futuras += 1  # fica com houve_confirmacao = FALSE (pendente)
 
         print(f"      -> visitas: {qtd_visitas_confirmadas} confirmadas | {qtd_visitas_recusadas} recusadas | "
             f"{qtd_visitas_futuras} futuras (pendentes) | {qtd_avaliacoes} avaliações")
@@ -323,7 +302,7 @@ def main():
         todos_usuarios_para_notificar = set(
             usuarios_comuns
             + [o["usuario_id"] for o in ocupantes]
-            + [o["sindico_usuario_id"] for o in ocupantes]  # [v2] chave renomeada
+            + [o["sindico_usuario_id"] for o in ocupantes]
             + [c[2] for c in cooperativas]
         )
         for usuario_id in todos_usuarios_para_notificar:
@@ -334,15 +313,18 @@ def main():
         print("=" * 78)
         tabelas = [
             "tipos_usuarios", "usuarios", "telefones", "notificacoes",
-            "tipos_condominios", "condominios", "sindicos", "usuarios_comuns",  # [NOVO v2]
+            "tipos_condominios", "condominios", "sindicos", "usuarios_comuns",
             "moradores", "torres", "unidades",
             "enderecos", "usuarios_condominios", "pontos_coletas", "cooperativas",
             "categorias_residuos", "cooperativas_categorias_materiais",
-            "pontos_coletas_categorias", "postagens", "historico_pontuacao",
-            "regras_pontuacao", "tipos_avisos", "avisos", "status_agendamentos",
+            "pontos_coletas_categorias", "postagens",
+            "tipos_avisos", "avisos", "status_agendamentos",
             "agendamentos_coletas", "visitas_coletas", "avaliacoes_visitas_coletas",
             "dias_semanas", "recorrencias_agendamentos", "cursos", "aulas",
-            "usuarios_cursos", "auditoria_log",
+            "usuarios_cursos",
+            "tipos_eventos_auditados", "tipos_operacoes_auditoria", "auditoria_log",
+            "auditoria_postagens", "auditoria_agendamentos_coletas",
+            "auditoria_usuarios_condominios",
         ]
         for tabela in tabelas:
             cur.execute(f"SELECT COUNT(*) FROM {tabela}")
