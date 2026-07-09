@@ -1,50 +1,6 @@
-# database.py
 # ==============================================================================
 # EcoCiente – camada de acesso a dados para a carga inicial de massa
 # ==============================================================================
-# Mudanças em relação à versão anterior (motivadas pela sincronização da
-# modelagem DBML com o script SQL consolidado):
-#
-#  1. Gamificação por pontos REMOVIDA do modelo lógico:
-#       - regras_pontuacao e historico_pontuacao deixaram de existir.
-#       - moradores.pontuacao_acumulada deixou de existir.
-#       - popular_regras_pontuacao() e criar_bonus_pontuacao() foram REMOVIDAS.
-#       - criar_morador() não grava mais pontuacao_acumulada.
-#
-#  2. Moderação de postagem REMOVIDA do modelo lógico:
-#       - postagens.status_postagem e postagens.pontos_gerados deixaram de
-#         existir; a procedure sp_validar_postagem foi removida do banco.
-#       - criar_postagem() não grava mais status_postagem/pontos_gerados.
-#       - validar_postagem() foi REMOVIDA (não há mais o que chamar).
-#
-#  3. Auditoria agora é Class Table Inheritance (supertipo auditoria_log +
-#     subtipos auditoria_postagens / auditoria_agendamentos_coletas /
-#     auditoria_usuarios_condominios), alimentada 100% pelas triggers
-#     trg_auditoria_postagens / trg_auditoria_agendamentos_coletas /
-#     trg_auditoria_usuarios_condominios. O Python nunca insere manualmente
-#     em nenhuma dessas 4 tabelas — apenas realiza o INSERT/UPDATE/DELETE na
-#     tabela de negócio, e o banco cuida do resto.
-#
-#  4. Class Table Inheritance de usuários (síndicos, usuarios_comuns,
-#     moradores, cooperativas) permanece igual à versão anterior:
-#       - criar_subtipo_sindico(cur, usuario_id)       → INSERT em sindicos,
-#         retorna id_sindico (usado como FK em condominios.sindico_id)
-#       - criar_subtipo_usuario_comum(cur, usuario_id) → INSERT em usuarios_comuns,
-#         retorna id_usuario_comum
-#     Cooperativas e moradores já tinham tabela própria e não mudaram de
-#     estrutura (exceto pela remoção de pontuacao_acumulada em moradores).
-#
-#  5. limpar_dados_banco: removidas historico_pontuacao e regras_pontuacao da
-#     lista de truncate (tabelas que não existem mais); adicionadas
-#     auditoria_postagens, auditoria_agendamentos_coletas e
-#     auditoria_usuarios_condominios (subtipos novos da herança de auditoria),
-#     truncadas antes de auditoria_log (filhos antes do pai).
-#
-#  Tudo o mais (avisos, agendamentos, visitas, recorrências, avaliações,
-#  cursos/aulas, notificações, tabelas de domínio) permanece idêntico: as
-#  procedures/triggers do banco continuam sendo invocadas da mesma forma.
-# ==============================================================================
-
 import os
 import sys
 import random
