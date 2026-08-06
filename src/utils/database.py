@@ -65,7 +65,7 @@ def popular_tipos_usuarios(cur):
     ids = {}
     for nome, desc in tipos:
         cur.execute(
-            "SELECT id_tipo_usuario FROM tipos_usuarios WHERE nome_tipo = %s",
+            "SELECT id_tipo_usuario FROM tb_lkp_tipos_usuarios WHERE nome_tipo = %s",
             (nome,),
         )
         row = cur.fetchone()
@@ -74,7 +74,7 @@ def popular_tipos_usuarios(cur):
             continue
         ids[nome] = fetch_id(
             cur,
-            "INSERT INTO tipos_usuarios (nome_tipo, descricao) "
+            "INSERT INTO tb_lkp_tipos_usuarios (nome_tipo, descricao) "
             "VALUES (%s, %s) RETURNING id_tipo_usuario",
             (nome, desc),
         )
@@ -83,13 +83,13 @@ def popular_tipos_usuarios(cur):
 
 def popular_tipos_condominios(cur):
     tipos = [
-        ("Residencial", "Condomínio residencial (torres/unidades habitacionais)."),
+        ("Residencial", "Condomínio residencial (tb_torres/tb_unidades habitacionais)."),
         ("Comercial",   "Condomínio/edifício comercial."),
     ]
     ids = {}
     for nome, desc in tipos:
         cur.execute(
-            "SELECT id_tipo_condominio FROM tipos_condominios WHERE nome_tipo = %s",
+            "SELECT id_tipo_condominio FROM tb_lkp_tipos_condominios WHERE nome_tipo = %s",
             (nome,),
         )
         row = cur.fetchone()
@@ -98,7 +98,7 @@ def popular_tipos_condominios(cur):
             continue
         ids[nome] = fetch_id(
             cur,
-            "INSERT INTO tipos_condominios (nome_tipo, descricao) "
+            "INSERT INTO tb_lkp_tipos_condominios (nome_tipo, descricao) "
             "VALUES (%s, %s) RETURNING id_tipo_condominio",
             (nome, desc),
         )
@@ -116,7 +116,7 @@ def popular_tipos_avisos(cur):
     ids = {}
     for nome, desc in tipos:
         cur.execute(
-            "SELECT id_tipo_aviso FROM tipos_avisos WHERE nome_tipo = %s",
+            "SELECT id_tipo_aviso FROM tb_lkp_tipos_avisos WHERE nome_tipo = %s",
             (nome,),
         )
         row = cur.fetchone()
@@ -125,7 +125,7 @@ def popular_tipos_avisos(cur):
             continue
         ids[nome] = fetch_id(
             cur,
-            "INSERT INTO tipos_avisos (nome_tipo, descricao) "
+            "INSERT INTO tb_lkp_tipos_avisos (nome_tipo, descricao) "
             "VALUES (%s, %s) RETURNING id_tipo_aviso",
             (nome, desc),
         )
@@ -140,7 +140,7 @@ def popular_dias_semana(cur):
     ids = {}
     for nome in dias:
         cur.execute(
-            "SELECT id_dia_semana FROM dias_semanas WHERE nome_dia = %s",
+            "SELECT id_dia_semana FROM tb_lkp_dias_semanas WHERE nome_dia = %s",
             (nome,),
         )
         row = cur.fetchone()
@@ -149,7 +149,7 @@ def popular_dias_semana(cur):
             continue
         ids[nome] = fetch_id(
             cur,
-            "INSERT INTO dias_semanas (nome_dia) VALUES (%s) RETURNING id_dia_semana",
+            "INSERT INTO tb_lkp_dias_semanas (nome_dia) VALUES (%s) RETURNING id_dia_semana",
             (nome,),
         )
     return ids
@@ -160,7 +160,7 @@ def popular_status_agendamentos(cur):
     ids = {}
     for nome in nomes:
         cur.execute(
-            "SELECT id_status FROM status_agendamentos WHERE nome_status = %s",
+            "SELECT id_status FROM tb_lkp_status_agendamentos WHERE nome_status = %s",
             (nome,),
         )
         row = cur.fetchone()
@@ -169,7 +169,7 @@ def popular_status_agendamentos(cur):
             continue
         ids[nome] = fetch_id(
             cur,
-            "INSERT INTO status_agendamentos (nome_status) "
+            "INSERT INTO tb_lkp_status_agendamentos (nome_status) "
             "VALUES (%s) RETURNING id_status",
             (nome,),
         )
@@ -189,7 +189,7 @@ def popular_categorias_residuos(cur):
     ids = {}
     for nome, desc, permite, cor in categorias:
         cur.execute(
-            "SELECT id_categoria FROM categorias_residuos WHERE nome_categoria = %s",
+            "SELECT id_categoria FROM tb_lkp_categorias_residuos WHERE nome_categoria = %s",
             (nome,),
         )
         row = cur.fetchone()
@@ -198,7 +198,7 @@ def popular_categorias_residuos(cur):
             continue
         ids[nome] = fetch_id(
             cur,
-            """INSERT INTO categorias_residuos
+            """INSERT INTO tb_lkp_categorias_residuos
                    (nome_categoria, descricao_material, permite_reciclagem, cor_identificacao)
                VALUES (%s, %s, %s, %s) RETURNING id_categoria""",
             (nome, desc, permite, cor),
@@ -214,7 +214,7 @@ def criar_endereco(cur):
     uf, cidade, cep, rua, numero, lat, lng = fk.address_tuple()
     return fetch_id(
         cur,
-        """INSERT INTO enderecos
+        """INSERT INTO tb_enderecos
                (cep, estado, cidade, logradouro, numero, complemento, latitude, longitude)
            VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id_endereco""",
         (cep, uf, cidade, rua, numero, fk.secondary_address(), lat, lng),
@@ -223,11 +223,11 @@ def criar_endereco(cur):
 
 def criar_usuario(cur, tipo_usuario_id, n_telefones=(1, 1)):
     """
-    Insere em usuarios + telefones.
+    Insere em tb_usuarios + tb_telefones.
     Retorna (usuario_id, nome).
 
-    ATENÇÃO: NÃO insere no subtipo (sindicos / usuarios_comuns / moradores /
-    cooperativas). Chame a função de subtipo adequada logo após:
+    ATENÇÃO: NÃO insere no subtipo (tb_sindicos / tb_usuarios_comuns / tb_moradores /
+    tb_cooperativas). Chame a função de subtipo adequada logo após:
         - criar_subtipo_sindico(cur, usuario_id)
         - criar_subtipo_usuario_comum(cur, usuario_id)
         - criar_morador(cur, usuario_id, unidade_id)          ← já existia
@@ -244,7 +244,7 @@ def criar_usuario(cur, tipo_usuario_id, n_telefones=(1, 1)):
 
     usuario_id = fetch_id(
         cur,
-        """INSERT INTO usuarios
+        """INSERT INTO tb_usuarios
                (nome_usuario, email_usuario, senha_hash, data_nascimento, cpf_cnpj,
                 url_avatar, ativo, registro_em, tipo_usuario_id)
            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -256,7 +256,7 @@ def criar_usuario(cur, tipo_usuario_id, n_telefones=(1, 1)):
     qtd_tel = rng.randint(*n_telefones)
     for _ in range(qtd_tel):
         cur.execute(
-            """INSERT INTO telefones
+            """INSERT INTO tb_telefones
                    (usuario_id, numero_contato, tipo_telefone, ativo)
                VALUES (%s, %s, %s, %s)""",
             (
@@ -274,24 +274,24 @@ def criar_usuario(cur, tipo_usuario_id, n_telefones=(1, 1)):
 
 def criar_subtipo_sindico(cur, usuario_id):
     """
-    Insere na tabela sindicos (subtipo de usuarios).
-    Retorna id_sindico — que é a FK usada em condominios.sindico_id.
+    Insere na tabela tb_sindicos (subtipo de tb_usuarios).
+    Retorna id_sindico — que é a FK usada em tb_condominios.sindico_id.
     """
     return fetch_id(
         cur,
-        "INSERT INTO sindicos (usuario_id) VALUES (%s) RETURNING id_sindico",
+        "INSERT INTO tb_sindicos (usuario_id) VALUES (%s) RETURNING id_sindico",
         (usuario_id,),
     )
 
 
 def criar_subtipo_usuario_comum(cur, usuario_id):
     """
-    Insere na tabela usuarios_comuns (subtipo de usuarios).
+    Insere na tabela tb_usuarios_comuns (subtipo de tb_usuarios).
     Retorna id_usuario_comum.
     """
     return fetch_id(
         cur,
-        "INSERT INTO usuarios_comuns (usuario_id) VALUES (%s) RETURNING id_usuario_comum",
+        "INSERT INTO tb_usuarios_comuns (usuario_id) VALUES (%s) RETURNING id_usuario_comum",
         (usuario_id,),
     )
 
@@ -311,7 +311,7 @@ def proximo_codigo_acesso():
 
 def criar_condominio(cur, tipo_condominio_id, sindico_id, nome_fantasia, comercial=False):
     """
-    sindico_id: id_sindico da tabela sindicos (FK do modelo com herança),
+    sindico_id: id_sindico da tabela tb_sindicos (FK do modelo com herança),
     NÃO o usuario_id direto.
     """
     endereco_id  = criar_endereco(cur)
@@ -321,7 +321,7 @@ def criar_condominio(cur, tipo_condominio_id, sindico_id, nome_fantasia, comerci
 
     return fetch_id(
         cur,
-        """INSERT INTO condominios
+        """INSERT INTO tb_condominios
                (nome_condominio, cnpj, codigo_acesso, ativo,
                 tipo_condominio_id, sindico_id, endereco_id)
            VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -334,7 +334,7 @@ def criar_condominio(cur, tipo_condominio_id, sindico_id, nome_fantasia, comerci
 def criar_torre(cur, condominio_id, nome_torre):
     return fetch_id(
         cur,
-        "INSERT INTO torres (nome_torre, condominio_id) "
+        "INSERT INTO tb_torres (nome_torre, condominio_id) "
         "VALUES (%s, %s) RETURNING id_torre",
         (nome_torre, condominio_id),
     )
@@ -343,7 +343,7 @@ def criar_torre(cur, condominio_id, nome_torre):
 def criar_unidade(cur, numero, tipo_unidade, torre_id=None, condominio_id=None):
     return fetch_id(
         cur,
-        """INSERT INTO unidades (numero_unidade, tipo_unidade, torre_id, condominio_id)
+        """INSERT INTO tb_unidades (numero_unidade, tipo_unidade, torre_id, condominio_id)
            VALUES (%s, %s, %s, %s) RETURNING id_unidade""",
         (numero, tipo_unidade, torre_id, condominio_id),
     )
@@ -351,7 +351,7 @@ def criar_unidade(cur, numero, tipo_unidade, torre_id=None, condominio_id=None):
 
 def criar_morador(cur, usuario_id, unidade_id):
     """
-    Insere na tabela moradores (subtipo de usuarios).
+    Insere na tabela tb_moradores (subtipo de tb_usuarios).
     Retorna id_morador.
 
     A modelagem atual não possui mais pontuacao_acumulada — o cache de
@@ -360,7 +360,7 @@ def criar_morador(cur, usuario_id, unidade_id):
     """
     return fetch_id(
         cur,
-        """INSERT INTO moradores (usuario_id, unidade_id)
+        """INSERT INTO tb_moradores (usuario_id, unidade_id)
            VALUES (%s, %s) RETURNING id_morador""",
         (usuario_id, unidade_id),
     )
@@ -368,11 +368,11 @@ def criar_morador(cur, usuario_id, unidade_id):
 
 def criar_vinculo_condominio(cur, usuario_id, condominio_id, aprovado_por_usuario_id=None):
     """
-    aprovado_por_usuario_id: usuarios.id_usuario (o síndico como usuário,
-    não o id_sindico da tabela sindicos).
+    aprovado_por_usuario_id: tb_usuarios.id_usuario (o síndico como usuário,
+    não o id_sindico da tabela tb_sindicos).
 
     Todo INSERT/UPDATE nesta tabela dispara trg_auditoria_usuarios_condominios,
-    que grava automaticamente em auditoria_log + auditoria_usuarios_condominios
+    que grava automaticamente em tb_log_auditoria + tb_log_auditoria_usuarios_condominios
     (aprovado_anterior/novo, data_saida_anterior/novo).
     """
     data_entrada = fk.date_time_between(700, 30)
@@ -381,7 +381,7 @@ def criar_vinculo_condominio(cur, usuario_id, condominio_id, aprovado_por_usuari
     data_saida   = fk.date_time_between(29, 0) if saiu else None
     return fetch_id(
         cur,
-        """INSERT INTO usuarios_condominios
+        """INSERT INTO tb_rel_usuarios_condominios
                (usuario_id, condominio_id, data_entrada, data_saida,
                 aprovado, aprovado_por_usuario_id)
            VALUES (%s, %s, %s, %s, %s, %s)
@@ -397,14 +397,14 @@ def criar_vinculo_condominio(cur, usuario_id, condominio_id, aprovado_por_usuari
 
 def criar_cooperativa(cur, usuario_id):
     """
-    cooperativas já é o subtipo de usuarios para Cooperativa —
-    usuario_id é a FK 1:1 para usuarios.id_usuario.
+    tb_cooperativas já é o subtipo de tb_usuarios para Cooperativa —
+    usuario_id é a FK 1:1 para tb_usuarios.id_usuario.
     """
     endereco_id = criar_endereco(cur)
     nome        = fk.company()
     cooperativa_id = fetch_id(
         cur,
-        """INSERT INTO cooperativas
+        """INSERT INTO tb_cooperativas
                (cnpj_cooperativa, nome_cooperativa, email_cooperativa,
                 telefone_cooperativa, data_cadastro, usuario_id, endereco_id)
            VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -422,7 +422,7 @@ def criar_ponto_coleta(cur, cooperativa_id, nome_cooperativa):
     nome_ponto  = f"Ecoponto {nome_cooperativa} - {fk.street_name()}"
     return fetch_id(
         cur,
-        """INSERT INTO pontos_coletas
+        """INSERT INTO tb_pontos_coletas
                (nome_ponto, endereco_id, cooperativa_id,
                 horario_abertura, horario_fechamento, ativo)
            VALUES (%s, %s, %s, %s, %s, %s)
@@ -437,7 +437,7 @@ def vincular_categorias_cooperativa(cur, cooperativa_id, categoria_ids_reciclave
     )
     for cat_id in escolhidas:
         cur.execute(
-            """INSERT INTO cooperativas_categorias_materiais
+            """INSERT INTO tb_rel_cooperativas_categorias_materiais
                    (cooperativa_id, categoria_residuo_id)
                VALUES (%s, %s)""",
             (cooperativa_id, cat_id),
@@ -450,7 +450,7 @@ def vincular_categorias_ponto_coleta(cur, ponto_coleta_id, categoria_ids_recicla
     )
     for cat_id in escolhidas:
         cur.execute(
-            """INSERT INTO pontos_coletas_categorias
+            """INSERT INTO tb_rel_pontos_coletas_categorias
                    (ponto_coleta_id, categoria_residuo_id)
                VALUES (%s, %s)""",
             (ponto_coleta_id, cat_id),
@@ -468,11 +468,11 @@ def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem):
     do banco) — a postagem nasce e permanece só com os dados de origem.
 
     Todo INSERT/UPDATE/DELETE nesta tabela dispara trg_auditoria_postagens,
-    que grava automaticamente em auditoria_log + auditoria_postagens.
+    que grava automaticamente em tb_log_auditoria + tb_log_auditoria_postagens.
     """
     return fetch_id(
         cur,
-        """INSERT INTO postagens
+        """INSERT INTO tb_postagens
                (usuario_id, condominio_id, categoria_id, url_foto, data_postagem)
            VALUES (%s, %s, %s, %s, %s)
            RETURNING id_postagem""",
@@ -489,11 +489,11 @@ def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem):
 
 def criar_aviso(cur, condominio_id, criado_por_usuario_id, tipo_aviso_id):
     """
-    criado_por_usuario_id: usuarios.id_usuario (não id_sindico).
-    A FK de avisos aponta para usuarios diretamente.
+    criado_por_usuario_id: tb_usuarios.id_usuario (não id_sindico).
+    A FK de tb_avisos aponta para tb_usuarios diretamente.
     """
     cur.execute(
-        """INSERT INTO avisos
+        """INSERT INTO tb_avisos
                (titulo_mensagem, conteudo_mensagem, criado_em,
                 condominio_id, criado_por_usuario_id, tipo_aviso_id)
            VALUES (%s, %s, %s, %s, %s, %s)""",
@@ -518,16 +518,16 @@ def criar_agendamento(cur, condominio_id, cooperativa_id,
     """
     Todo INSERT/UPDATE/DELETE nesta tabela dispara
     trg_auditoria_agendamentos_coletas, que grava automaticamente em
-    auditoria_log + auditoria_agendamentos_coletas (status e datas
+    tb_log_auditoria + tb_log_auditoria_agendamentos_coletas (status e datas
     antes/depois).
     """
     data_inicio = fk.date_time_between(180, 0)
     data_fim    = data_inicio + timedelta(hours=2)
     # possui_recorrencia: se recorrente=False não haverá INSERT em
-    # recorrencias_agendamentos e a trigger não vai tocar nessa linha.
+    # tb_rel_recorrencias_agendamentos e a trigger não vai tocar nessa linha.
     return fetch_id(
         cur,
-        """INSERT INTO agendamentos_coletas
+        """INSERT INTO tb_agendamentos_coletas
                (condominio_id, cooperativa_id, status_agendamento_id,
                 data_inicio, data_fim, possui_recorrencia)
            VALUES (%s, %s, %s, %s, %s, %s)
@@ -540,10 +540,10 @@ def criar_agendamento(cur, condominio_id, cooperativa_id,
 def criar_recorrencia(cur, agendamento_coleta_id, dia_semana_id):
     """
     O INSERT nesta tabela dispara trg_atualizar_recorrencia_insert, que
-    recalcula agendamentos_coletas.possui_recorrencia.
+    recalcula tb_agendamentos_coletas.possui_recorrencia.
     """
     cur.execute(
-        """INSERT INTO recorrencias_agendamentos
+        """INSERT INTO tb_rel_recorrencias_agendamentos
                (agendamento_coleta_id, dia_semana_id)
            VALUES (%s, %s)""",
         (agendamento_coleta_id, dia_semana_id),
@@ -553,7 +553,7 @@ def criar_recorrencia(cur, agendamento_coleta_id, dia_semana_id):
 def criar_visita(cur, agendamento_coleta_id, data_visita):
     return fetch_id(
         cur,
-        """INSERT INTO visitas_coletas
+        """INSERT INTO tb_visitas_coletas
                (agendamento_coleta_id, data_visita,
                 foi_realizada, houve_confirmacao, confirmado_em, observacao)
            VALUES (%s, %s, FALSE, FALSE, NULL, NULL)
@@ -569,17 +569,17 @@ def confirmar_visita(cur, visita_id, confirmou, observacao=None):
         (visita_id, confirmou, observacao),
     )
     cur.execute(
-        "UPDATE visitas_coletas SET foi_realizada = %s WHERE id_visita_coleta = %s",
+        "UPDATE tb_visitas_coletas SET foi_realizada = %s WHERE id_visita_coleta = %s",
         (confirmou, visita_id),
     )
 
 
 def criar_avaliacao_visita(cur, visita_coleta_id, usuario_avaliador_id):
     """
-    usuario_avaliador_id: usuarios.id_usuario do síndico avaliador.
+    usuario_avaliador_id: tb_usuarios.id_usuario do síndico avaliador.
     """
     cur.execute(
-        """INSERT INTO avaliacoes_visitas_coletas
+        """INSERT INTO tb_avaliacoes_visitas_coletas
                (visita_coleta_id, usuario_avaliador_id, nota, comentario, avaliado_em)
            VALUES (%s, %s, %s, %s, %s)""",
         (
@@ -630,9 +630,9 @@ def popular_cursos_e_aulas(cur):
 
     cursos_ids = {}
     aulas_ids  = {}
-    for titulo, descricao, aulas in cursos_def:
+    for titulo, descricao, lista_aulas in cursos_def:
         cur.execute(
-            "SELECT id_curso FROM cursos WHERE titulo_curso = %s", (titulo,)
+            "SELECT id_curso FROM tb_cursos WHERE titulo_curso = %s", (titulo,)
         )
         row = cur.fetchone()
         if row:
@@ -640,14 +640,14 @@ def popular_cursos_e_aulas(cur):
         else:
             curso_id = fetch_id(
                 cur,
-                """INSERT INTO cursos (titulo_curso, descricao_curso, esta_ativo)
+                """INSERT INTO tb_cursos (titulo_curso, descricao_curso, esta_ativo)
                    VALUES (%s, %s, TRUE) RETURNING id_curso""",
                 (titulo, descricao),
             )
         cursos_ids[titulo] = curso_id
 
         cur.execute(
-            "SELECT id_aula FROM aulas WHERE curso_id = %s ORDER BY ordem",
+            "SELECT id_aula FROM tb_aulas WHERE curso_id = %s ORDER BY ordem",
             (curso_id,),
         )
         existentes = [r[0] for r in cur.fetchall()]
@@ -656,10 +656,10 @@ def popular_cursos_e_aulas(cur):
             continue
 
         ids_aula = []
-        for ordem, titulo_aula in enumerate(aulas, start=1):
+        for ordem, titulo_aula in enumerate(lista_aulas, start=1):
             aula_id = fetch_id(
                 cur,
-                """INSERT INTO aulas (curso_id, titulo_aula, conteudo_aula, ordem)
+                """INSERT INTO tb_aulas (curso_id, titulo_aula, conteudo_aula, ordem)
                    VALUES (%s, %s, %s, %s) RETURNING id_aula""",
                 (curso_id, titulo_aula, fk.sentence(25), ordem),
             )
@@ -684,7 +684,7 @@ def matricular_usuario_em_aulas(cur, usuario_id, lista_aula_ids):
         data_inicio  = fk.date_time_between(180, 1)
         uc_id = fetch_id(
             cur,
-            """INSERT INTO usuarios_cursos
+            """INSERT INTO tb_rel_usuarios_cursos
                    (usuario_id, aula_id, concluido, data_inicio, data_conclusao)
                VALUES (%s, %s, FALSE, %s, NULL)
                RETURNING id_usuario_curso""",
@@ -697,7 +697,7 @@ def matricular_usuario_em_aulas(cur, usuario_id, lista_aula_ids):
             continue
         data_conclusao = data_inicio + timedelta(days=rng.randint(1, 14))
         cur.execute(
-            """UPDATE usuarios_cursos
+            """UPDATE tb_rel_usuarios_cursos
                SET concluido = TRUE, data_conclusao = %s
                WHERE id_usuario_curso = %s""",
             (data_conclusao, uc_id),
@@ -724,7 +724,7 @@ def criar_notificacoes_usuario(cur, usuario_id, qtd):
             data_envio + timedelta(hours=rng.randint(1, 48)) if foi_lida else None
         )
         cur.execute(
-            """INSERT INTO notificacoes
+            """INSERT INTO tb_notificacoes
                    (usuario_id, titulo_mensagem, corpo_mensagem,
                     tipo_notificacao, foi_lida, data_envio, data_leitura)
                VALUES (%s, %s, %s, %s, %s, %s, %s)""",
@@ -743,47 +743,48 @@ def limpar_dados_banco(cur):
     """
     TRUNCATE em ordem de dependência (filhos antes dos pais).
 
-    Inclui sindicos e usuarios_comuns (subtipos de usuarios) e os 3 subtipos
-    de auditoria (auditoria_postagens, auditoria_agendamentos_coletas,
-    auditoria_usuarios_condominios), truncados antes do supertipo
-    auditoria_log. historico_pontuacao e regras_pontuacao NÃO aparecem mais
+    Inclui tb_sindicos e tb_usuarios_comuns (subtipos de tb_usuarios) e os 3 subtipos
+    de auditoria (tb_log_auditoria_postagens, tb_log_auditoria_agendamentos_coletas,
+    tb_log_auditoria_usuarios_condominios), truncados antes do supertipo
+    tb_log_auditoria. historico_pontuacao e regras_pontuacao NÃO aparecem mais
     aqui: deixaram de existir na modelagem atual.
 
-    Tabelas de domínio/lookup (tipos_usuarios, tipos_condominios,
-    tipos_avisos, status_agendamentos, dias_semanas, categorias_residuos,
-    tipos_eventos_auditados, tipos_operacoes_auditoria) são mantidas
-    propositalmente fora desta lista: são seeds fixos, populados uma única
-    vez e reaproveitados entre execuções.
+    Tabelas de domínio/lookup (tb_lkp_tipos_usuarios, tb_lkp_tipos_condominios,
+    tb_lkp_tipos_avisos, tb_lkp_status_agendamentos, tb_lkp_dias_semanas,
+    tb_lkp_categorias_residuos, tb_lkp_tipos_eventos_auditados,
+    tb_lkp_tipos_operacoes_auditoria) são mantidas propositalmente fora desta
+    lista: são seeds fixos, populados uma única vez e reaproveitados entre
+    execuções.
     """
     tabelas = [
-        "notificacoes",
-        "auditoria_postagens",
-        "auditoria_agendamentos_coletas",
-        "auditoria_usuarios_condominios",
-        "auditoria_log",
-        "postagens",
-        "avaliacoes_visitas_coletas",
-        "visitas_coletas",
-        "recorrencias_agendamentos",
-        "agendamentos_coletas",
-        "usuarios_cursos",
-        "aulas",
-        "cursos",
-        "avisos",
-        "usuarios_condominios",
-        "moradores",
-        "usuarios_comuns",
-        "sindicos",
-        "unidades",
-        "torres",
-        "condominios",
-        "cooperativas",
-        "pontos_coletas",
-        "cooperativas_categorias_materiais",
-        "pontos_coletas_categorias",
-        "enderecos",
-        "telefones",
-        "usuarios",
+        "tb_notificacoes",
+        "tb_log_auditoria_postagens",
+        "tb_log_auditoria_agendamentos_coletas",
+        "tb_log_auditoria_usuarios_condominios",
+        "tb_log_auditoria",
+        "tb_postagens",
+        "tb_avaliacoes_visitas_coletas",
+        "tb_visitas_coletas",
+        "tb_rel_recorrencias_agendamentos",
+        "tb_agendamentos_coletas",
+        "tb_rel_usuarios_cursos",
+        "tb_aulas",
+        "tb_cursos",
+        "tb_avisos",
+        "tb_rel_usuarios_condominios",
+        "tb_moradores",
+        "tb_usuarios_comuns",
+        "tb_sindicos",
+        "tb_unidades",
+        "tb_torres",
+        "tb_condominios",
+        "tb_cooperativas",
+        "tb_pontos_coletas",
+        "tb_rel_cooperativas_categorias_materiais",
+        "tb_rel_pontos_coletas_categorias",
+        "tb_enderecos",
+        "tb_telefones",
+        "tb_usuarios",
     ]
     for tabela in tabelas:
         cur.execute(f"TRUNCATE TABLE {tabela} CASCADE")

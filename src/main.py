@@ -311,21 +311,35 @@ def main():
         print("\n" + "=" * 78)
         print("Carga concluída. Resumo de linhas por tabela:")
         print("=" * 78)
-        tabelas = [
-            "tipos_usuarios", "usuarios", "telefones", "notificacoes",
-            "tipos_condominios", "condominios", "sindicos", "usuarios_comuns",
-            "moradores", "torres", "unidades",
-            "enderecos", "usuarios_condominios", "pontos_coletas", "cooperativas",
-            "categorias_residuos", "cooperativas_categorias_materiais",
-            "pontos_coletas_categorias", "postagens",
-            "tipos_avisos", "avisos", "status_agendamentos",
-            "agendamentos_coletas", "visitas_coletas", "avaliacoes_visitas_coletas",
-            "dias_semanas", "recorrencias_agendamentos", "cursos", "aulas",
-            "usuarios_cursos",
-            "tipos_eventos_auditados", "tipos_operacoes_auditoria", "auditoria_log",
-            "auditoria_postagens", "auditoria_agendamentos_coletas",
-            "auditoria_usuarios_condominios",
-        ]
+        tabelas = ["tb_notificacoes",
+        "tb_log_auditoria_postagens",
+        "tb_log_auditoria_agendamentos_coletas",
+        "tb_log_auditoria_usuarios_condominios",
+        "tb_log_auditoria",
+        "tb_postagens",
+        "tb_avaliacoes_visitas_coletas",
+        "tb_visitas_coletas",
+        "tb_rel_recorrencias_agendamentos",
+        "tb_agendamentos_coletas",
+        "tb_rel_usuarios_cursos",
+        "tb_aulas",
+        "tb_cursos",
+        "tb_avisos",
+        "tb_rel_usuarios_condominios",
+        "tb_moradores",
+        "tb_usuarios_comuns",
+        "tb_sindicos",
+        "tb_unidades",
+        "tb_torres",
+        "tb_condominios",
+        "tb_cooperativas",
+        "tb_pontos_coletas",
+        "tb_rel_cooperativas_categorias_materiais",
+        "tb_rel_pontos_coletas_categorias",
+        "tb_enderecos",
+        "tb_telefones",
+        "tb_usuarios",
+    ]
         for tabela in tabelas:
             cur.execute(f"SELECT COUNT(*) FROM {tabela}")
             print(f"  {tabela:38s} {cur.fetchone()[0]:>6d}")
