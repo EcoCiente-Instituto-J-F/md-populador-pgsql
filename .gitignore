@@ -132,6 +132,9 @@ __pypackages__/
 celerybeat-schedule
 celerybeat.pid
 
+# Database logic model
+*.dbml
+
 # Redis
 *.rdb
 *.aof
@@ -147,6 +150,9 @@ activemq-data/
 
 # SageMath parsed files
 *.sage.py
+
+#Vscode settings
+.vscode
 
 # Environments
 .env
