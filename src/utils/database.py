@@ -177,38 +177,6 @@ def popular_status_agendamentos(cur):
     return ids
 
 
-def popular_niveis_confianca(cur):
-    """
-    tb_rel_usuarios_condominios.nivel_confianca_id tem DEFAULT 1 e a
-    procedure sp_atualizar_trust_score busca 'pessoa_confiavel' pelo nome
-    (ver a.sql). Por isso a ordem de inserção importa: 'morador_comum'
-    precisa ser a primeira linha (id 1), já que é o default de todo vínculo
-    novo em tb_rel_usuarios_condominios.
-    """
-    niveis = [
-        ("morador_comum",    1, "Morador/usuário comum recém-vinculado ao condomínio."),
-        ("pessoa_confiavel", 3, "Promovido automaticamente após acúmulo de trust_score."),
-        ("sindico",          3, "Síndico do condomínio."),
-    ]
-    ids = {}
-    for nome, peso_voto, desc in niveis:
-        cur.execute(
-            "SELECT id_nivel_confianca FROM tb_lkp_niveis_confianca WHERE nome_nivel = %s",
-            (nome,),
-        )
-        row = cur.fetchone()
-        if row:
-            ids[nome] = row[0]
-            continue
-        ids[nome] = fetch_id(
-            cur,
-            "INSERT INTO tb_lkp_niveis_confianca (nome_nivel, peso_voto, descricao) "
-            "VALUES (%s, %s, %s) RETURNING id_nivel_confianca",
-            (nome, peso_voto, desc),
-        )
-    return ids
-
-
 def popular_categorias_residuos(cur):
     categorias = [
         ("Papel",      "Papel e papelão em geral",           True,  "#1565C0"),
@@ -239,6 +207,115 @@ def popular_categorias_residuos(cur):
     return ids
 
 
+def popular_niveis_confianca(cur):
+    """
+    ATENÇÃO À ORDEM: tb_rel_usuarios_condominios.nivel_confianca_id tem
+    DEFAULT 1, e o comentário da coluna no schema diz "Default =
+    morador_comum (id 1)". "morador_comum" TEM que ser inserido primeiro
+    (se a tabela já tiver linhas de execuções anteriores, a ordem não
+    importa mais).
+    """
+    niveis = [
+        ("morador_comum",    1, "Nível padrão de qualquer vínculo aprovado."),
+        ("pessoa_confiavel", 3, "Promovido automaticamente ao atingir o trust_score mínimo."),
+        ("sindico",          3, "Síndico do condomínio."),
+    ]
+    ids = {}
+    for nome, peso, desc in niveis:
+        cur.execute(
+            "SELECT id_nivel_confianca FROM tb_lkp_niveis_confianca WHERE nome_nivel = %s",
+            (nome,),
+        )
+        row = cur.fetchone()
+        if row:
+            ids[nome] = row[0]
+            continue
+        ids[nome] = fetch_id(
+            cur,
+            """INSERT INTO tb_lkp_niveis_confianca (nome_nivel, peso_voto, descricao)
+               VALUES (%s, %s, %s) RETURNING id_nivel_confianca""",
+            (nome, peso, desc),
+        )
+    return ids
+
+
+def popular_status_validacoes_postagens(cur):
+    """
+    ATENÇÃO À ORDEM: tb_postagens.status_validacao_id tem DEFAULT 1, e o
+    comentário da coluna diz "Default = aprovada (id 1)". "aprovada" TEM
+    que ser a primeira a ser inserida aqui.
+    """
+    status = [
+        ("aprovada",   "Postagem validada pela comunidade/moderação."),
+        ("em_analise", "Aguardando votos suficientes da comunidade."),
+        ("reprovada",  "Postagem reprovada pela comunidade/moderação."),
+    ]
+    ids = {}
+    for nome, desc in status:
+        cur.execute(
+            "SELECT id_status_validacao FROM tb_lkp_status_validacoes_postagens WHERE nome_status = %s",
+            (nome,),
+        )
+        row = cur.fetchone()
+        if row:
+            ids[nome] = row[0]
+            continue
+        ids[nome] = fetch_id(
+            cur,
+            """INSERT INTO tb_lkp_status_validacoes_postagens (nome_status, descricao)
+               VALUES (%s, %s) RETURNING id_status_validacao""",
+            (nome, desc),
+        )
+    return ids
+
+
+def popular_tipos_votos_postagens(cur):
+    tipos = ["aprovar", "denunciar"]
+    ids = {}
+    for nome in tipos:
+        cur.execute(
+            "SELECT id_tipo_voto FROM tb_lkp_tipos_votos_postagens WHERE nome_tipo = %s",
+            (nome,),
+        )
+        row = cur.fetchone()
+        if row:
+            ids[nome] = row[0]
+            continue
+        ids[nome] = fetch_id(
+            cur,
+            "INSERT INTO tb_lkp_tipos_votos_postagens (nome_tipo) VALUES (%s) "
+            "RETURNING id_tipo_voto",
+            (nome,),
+        )
+    return ids
+
+
+def popular_motivos_denuncia(cur):
+    motivos = [
+        "Não é lixo reciclável",
+        "Foto não corresponde à categoria",
+        "Foto antiga/reutilizada",
+        "Spam/abuso",
+    ]
+    ids = {}
+    for desc in motivos:
+        cur.execute(
+            "SELECT id_motivo_denuncia FROM tb_lkp_motivos_denuncia WHERE descricao = %s",
+            (desc,),
+        )
+        row = cur.fetchone()
+        if row:
+            ids[desc] = row[0]
+            continue
+        ids[desc] = fetch_id(
+            cur,
+            "INSERT INTO tb_lkp_motivos_denuncia (descricao, ativo) VALUES (%s, TRUE) "
+            "RETURNING id_motivo_denuncia",
+            (desc,),
+        )
+    return ids
+
+
 # ==============================================================================
 # 2. ENDEREÇOS E USUÁRIOS (+ SUBTIPOS DE HERANÇA)
 # ==============================================================================
@@ -256,15 +333,14 @@ def criar_endereco(cur):
 
 def criar_usuario(cur, tipo_usuario_id, n_telefones=(1, 1)):
     """
-    Insere em tb_usuarios + tb_telefones.
-    Retorna (usuario_id, nome).
+    Insere em tb_usuarios + tb_telefones. Retorna (usuario_id, nome).
 
     ATENÇÃO: NÃO insere no subtipo (tb_sindicos / tb_usuarios_comuns / tb_moradores /
     tb_cooperativas). Chame a função de subtipo adequada logo após:
         - criar_subtipo_sindico(cur, usuario_id)
         - criar_subtipo_usuario_comum(cur, usuario_id)
-        - criar_morador(cur, usuario_id, unidade_id)          ← já existia
-        - criar_cooperativa(cur, usuario_id)                  ← já existia
+        - criar_morador(cur, usuario_id, unidade_id)
+        - criar_cooperativa(cur, usuario_id)
     """
     nome        = fk.name()
     email       = fk.email(nome)
@@ -306,10 +382,6 @@ def criar_usuario(cur, tipo_usuario_id, n_telefones=(1, 1)):
 # --- Subtipos de herança ------------------------------------------------------
 
 def criar_subtipo_sindico(cur, usuario_id):
-    """
-    Insere na tabela tb_sindicos (subtipo de tb_usuarios).
-    Retorna id_sindico — que é a FK usada em tb_condominios.sindico_id.
-    """
     return fetch_id(
         cur,
         "INSERT INTO tb_sindicos (usuario_id) VALUES (%s) RETURNING id_sindico",
@@ -318,10 +390,6 @@ def criar_subtipo_sindico(cur, usuario_id):
 
 
 def criar_subtipo_usuario_comum(cur, usuario_id):
-    """
-    Insere na tabela tb_usuarios_comuns (subtipo de tb_usuarios).
-    Retorna id_usuario_comum.
-    """
     return fetch_id(
         cur,
         "INSERT INTO tb_usuarios_comuns (usuario_id) VALUES (%s) RETURNING id_usuario_comum",
@@ -343,10 +411,6 @@ def proximo_codigo_acesso():
 
 
 def criar_condominio(cur, tipo_condominio_id, sindico_id, nome_fantasia, comercial=False):
-    """
-    sindico_id: id_sindico da tabela tb_sindicos (FK do modelo com herança),
-    NÃO o usuario_id direto.
-    """
     endereco_id  = criar_endereco(cur)
     cnpj         = fk.cnpj() if comercial else (fk.cnpj() if fk.boolean(20) else None)
     codigo_acesso = proximo_codigo_acesso()
@@ -374,6 +438,10 @@ def criar_torre(cur, condominio_id, nome_torre):
 
 
 def criar_unidade(cur, numero, tipo_unidade, torre_id=None, condominio_id=None):
+    """
+    tb_unidades.condominio_id é NOT NULL sempre — mesmo unidade vinculada a
+    uma torre também precisa receber o condominio_id.
+    """
     return fetch_id(
         cur,
         """INSERT INTO tb_unidades (numero_unidade, tipo_unidade, torre_id, condominio_id)
@@ -383,14 +451,6 @@ def criar_unidade(cur, numero, tipo_unidade, torre_id=None, condominio_id=None):
 
 
 def criar_morador(cur, usuario_id, unidade_id):
-    """
-    Insere na tabela tb_moradores (subtipo de tb_usuarios).
-    Retorna id_morador.
-
-    A modelagem atual não possui mais pontuacao_acumulada — o cache de
-    pontuação/ranking saiu do relacional (era alimentado por
-    historico_pontuacao, que deixou de existir) e não é mais gravado aqui.
-    """
     return fetch_id(
         cur,
         """INSERT INTO tb_moradores (usuario_id, unidade_id)
@@ -401,42 +461,53 @@ def criar_morador(cur, usuario_id, unidade_id):
 
 def criar_vinculo_condominio(cur, usuario_id, condominio_id, aprovado_por_usuario_id=None):
     """
-    aprovado_por_usuario_id: tb_usuarios.id_usuario (o síndico como usuário,
-    não o id_sindico da tabela tb_sindicos).
+    tb_rel_usuarios_condominios tem colunas de confiança NOT NULL sem
+    default (trust_score, postagens_validadas_sem_contestacao,
+    denuncias_realizadas, denuncias_procedentes). Geramos contadores
+    plausíveis e usamos a própria fn_calcular_trust_score(...) do banco
+    (mesma fórmula usada por sp_atualizar_trust_score) para calcular o
+    trust_score, garantindo consistência com a regra de negócio real.
+
+    nivel_confianca_id fica no DEFAULT (1 = morador_comum): a promoção a
+    pessoa_confiavel só acontece via sp_atualizar_trust_score, que não é
+    chamada aqui (esta carga não simula o histórico real de postagens/votos
+    necessário pra justificar a promoção).
 
     Todo INSERT/UPDATE nesta tabela dispara trg_auditoria_usuarios_condominios,
-    que grava automaticamente em tb_log_auditoria + tb_log_auditoria_usuarios_condominios
-    (aprovado_anterior/novo, data_saida_anterior/novo).
+    que grava automaticamente em tb_log_auditoria + tb_log_auditoria_usuarios_condominios.
     """
     data_entrada = fk.date_time_between(700, 30)
     aprovado     = fk.boolean(92)
     saiu         = fk.boolean(8)
     data_saida   = fk.date_time_between(29, 0) if saiu else None
 
-    # tb_rel_usuarios_condominios exige NOT NULL em trust_score e nos três
-    # contadores (postagens_validadas_sem_contestacao, denuncias_realizadas,
-    # denuncias_procedentes) — o schema não tem DEFAULT para essas colunas.
-    # Todo vínculo novo começa "zerado"; quem for atualizar os contadores
-    # depois deve chamar sp_atualizar_trust_score (que recalcula trust_score
-    # via fn_calcular_trust_score) em vez de escrever direto nessas colunas.
-    postagens_validadas_sem_contestacao = 0
-    denuncias_realizadas                = 0
-    denuncias_procedentes               = 0
-    trust_score                         = 0  # == fn_calcular_trust_score(0, 0, 0)
+    postagens_validadas   = rng.randint(0, 15)
+    denuncias_realizadas  = rng.randint(0, 4)
+    denuncias_procedentes = rng.randint(0, denuncias_realizadas)
+    taxa_acerto_denuncias = (
+        round(100.0 * denuncias_procedentes / denuncias_realizadas, 2)
+        if denuncias_realizadas > 0 else None
+    )
+
+    cur.execute(
+        "SELECT fn_calcular_trust_score(%s, %s, %s)",
+        (postagens_validadas, denuncias_realizadas, denuncias_procedentes),
+    )
+    trust_score = cur.fetchone()[0]
 
     return fetch_id(
         cur,
         """INSERT INTO tb_rel_usuarios_condominios
                (usuario_id, condominio_id, data_entrada, data_saida,
-                aprovado, aprovado_por_usuario_id,
-                trust_score, postagens_validadas_sem_contestacao,
-                denuncias_realizadas, denuncias_procedentes)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                aprovado, aprovado_por_usuario_id, trust_score,
+                postagens_validadas_sem_contestacao, denuncias_realizadas,
+                denuncias_procedentes, taxa_acerto_denuncias)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            RETURNING id_usuario_condominio""",
         (usuario_id, condominio_id, data_entrada, data_saida,
-         aprovado, aprovado_por_usuario_id,
-         trust_score, postagens_validadas_sem_contestacao,
-         denuncias_realizadas, denuncias_procedentes),
+         aprovado, aprovado_por_usuario_id, trust_score,
+         postagens_validadas, denuncias_realizadas,
+         denuncias_procedentes, taxa_acerto_denuncias),
     )
 
 
@@ -445,10 +516,6 @@ def criar_vinculo_condominio(cur, usuario_id, condominio_id, aprovado_por_usuari
 # ==============================================================================
 
 def criar_cooperativa(cur, usuario_id):
-    """
-    tb_cooperativas já é o subtipo de tb_usuarios para Cooperativa —
-    usuario_id é a FK 1:1 para tb_usuarios.id_usuario.
-    """
     endereco_id = criar_endereco(cur)
     nome        = fk.company()
     cooperativa_id = fetch_id(
@@ -510,37 +577,35 @@ def vincular_categorias_ponto_coleta(cur, ponto_coleta_id, categoria_ids_recicla
 # 5. POSTAGENS DE DESCARTE
 # ==============================================================================
 
-def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem):
+def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem, torre_id=None):
     """
-    A modelagem atual não possui mais status_postagem/pontos_gerados (a
-    moderação de descarte e a procedure sp_validar_postagem foram removidas
-    do banco) — a postagem nasce e permanece só com os dados de origem.
+    tb_postagens tem colunas de moderação NOT NULL sem default:
+    hash_foto (único, impede foto reaproveitada), capturada_em (timestamp
+    da câmera, deve ser <= data_postagem) e saldo_confianca (soma dos
+    pesos de voto — nasce em 0, pois esta carga não simula o fluxo de
+    votação via sp_processar_voto_postagem). status_validacao_id fica no
+    DEFAULT (1 = 'aprovada').
 
     Todo INSERT/UPDATE/DELETE nesta tabela dispara trg_auditoria_postagens,
     que grava automaticamente em tb_log_auditoria + tb_log_auditoria_postagens.
     """
-    # hash_foto, capturada_em e saldo_confianca são NOT NULL sem DEFAULT no
-    # schema. capturada_em precisa satisfazer ck_postagens_capturada_em
-    # (capturada_em <= data_postagem), então geramos um instante um pouco
-    # antes da postagem. hash_foto é UNIQUE, então usamos um valor aleatório
-    # por postagem (hex de 64 chars, como um SHA-256).
-    hash_foto = hashlib.sha256(
-        f"{usuario_id}-{condominio_id}-{categoria_id}-{rng.random()}".encode()
-    ).hexdigest()
     capturada_em = data_postagem - timedelta(minutes=rng.randint(1, 30))
-    saldo_confianca = 0  # ninguém votou ainda na postagem recém-criada
+    hash_foto = hashlib.sha256(
+        f"{usuario_id}-{condominio_id}-{categoria_id}-"
+        f"{data_postagem.isoformat()}-{rng.random()}".encode("utf-8")
+    ).hexdigest()
 
     return fetch_id(
         cur,
         """INSERT INTO tb_postagens
-               (usuario_id, condominio_id, categoria_id, url_foto,
+               (usuario_id, condominio_id, torre_id, categoria_id, url_foto,
                 hash_foto, capturada_em, data_postagem, saldo_confianca)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
            RETURNING id_postagem""",
         (
-            usuario_id, condominio_id, categoria_id,
-            fk.url(path="postagens", ext="jpg"),
-            hash_foto, capturada_em, data_postagem, saldo_confianca,
+            usuario_id, condominio_id, torre_id, categoria_id,
+            fk.url(path="postagens", ext="jpg"), hash_foto,
+            capturada_em, data_postagem, 0,
         ),
     )
 
@@ -550,10 +615,6 @@ def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem):
 # ==============================================================================
 
 def criar_aviso(cur, condominio_id, criado_por_usuario_id, tipo_aviso_id):
-    """
-    criado_por_usuario_id: tb_usuarios.id_usuario (não id_sindico).
-    A FK de tb_avisos aponta para tb_usuarios diretamente.
-    """
     cur.execute(
         """INSERT INTO tb_avisos
                (titulo_mensagem, conteudo_mensagem, criado_em,
@@ -572,21 +633,21 @@ def criar_aviso(cur, condominio_id, criado_por_usuario_id, tipo_aviso_id):
 
 # ==============================================================================
 # 7. AGENDAMENTOS, VISITAS, RECORRÊNCIAS E AVALIAÇÕES
-#    (usa sp_confirmar_passagem_cooperativa)
 # ==============================================================================
 
 def criar_agendamento(cur, condominio_id, cooperativa_id,
                       status_agendamento_id, recorrente):
     """
+    possui_recorrencia é setado diretamente aqui, no INSERT — o schema
+    atual NÃO tem trigger que recalcula essa coluna automaticamente a
+    partir de tb_rel_recorrencias_agendamentos.
+
     Todo INSERT/UPDATE/DELETE nesta tabela dispara
     trg_auditoria_agendamentos_coletas, que grava automaticamente em
-    tb_log_auditoria + tb_log_auditoria_agendamentos_coletas (status e datas
-    antes/depois).
+    tb_log_auditoria + tb_log_auditoria_agendamentos_coletas.
     """
     data_inicio = fk.date_time_between(180, 0)
     data_fim    = data_inicio + timedelta(hours=2)
-    # possui_recorrencia: se recorrente=False não haverá INSERT em
-    # tb_rel_recorrencias_agendamentos e a trigger não vai tocar nessa linha.
     return fetch_id(
         cur,
         """INSERT INTO tb_agendamentos_coletas
@@ -600,10 +661,6 @@ def criar_agendamento(cur, condominio_id, cooperativa_id,
 
 
 def criar_recorrencia(cur, agendamento_coleta_id, dia_semana_id):
-    """
-    O INSERT nesta tabela dispara trg_atualizar_recorrencia_insert, que
-    recalcula tb_agendamentos_coletas.possui_recorrencia.
-    """
     cur.execute(
         """INSERT INTO tb_rel_recorrencias_agendamentos
                (agendamento_coleta_id, dia_semana_id)
@@ -625,21 +682,23 @@ def criar_visita(cur, agendamento_coleta_id, data_visita):
 
 
 def confirmar_visita(cur, visita_id, confirmou, observacao=None):
-    call_procedure(
-        cur,
-        "CALL sp_confirmar_passagem_cooperativa(%s, %s, %s)",
-        (visita_id, confirmou, observacao),
-    )
+    """
+    O schema atual NÃO tem a procedure sp_confirmar_passagem_cooperativa
+    (ela existia em uma versão anterior do banco). A confirmação agora é
+    um UPDATE direto em tb_visitas_coletas.
+    """
     cur.execute(
-        "UPDATE tb_visitas_coletas SET foi_realizada = %s WHERE id_visita_coleta = %s",
-        (confirmou, visita_id),
+        """UPDATE tb_visitas_coletas
+           SET foi_realizada = %s,
+               houve_confirmacao = TRUE,
+               confirmado_em = now(),
+               observacao = %s
+           WHERE id_visita_coleta = %s""",
+        (confirmou, observacao, visita_id),
     )
 
 
 def criar_avaliacao_visita(cur, visita_coleta_id, usuario_avaliador_id):
-    """
-    usuario_avaliador_id: tb_usuarios.id_usuario do síndico avaliador.
-    """
     cur.execute(
         """INSERT INTO tb_avaliacoes_visitas_coletas
                (visita_coleta_id, usuario_avaliador_id, nota, comentario, avaliado_em)
@@ -659,11 +718,6 @@ def criar_avaliacao_visita(cur, visita_coleta_id, usuario_avaliador_id):
 # ==============================================================================
 
 def popular_cursos_e_aulas(cur):
-    """
-    Dois cursos do domínio do produto:
-      1. Reciclagem de Materiais
-      2. Compostagem Residencial e de Apartamento (Coletiva)
-    """
     cursos_def = [
         (
             "Reciclagem de Materiais",
@@ -732,14 +786,6 @@ def popular_cursos_e_aulas(cur):
 
 
 def matricular_usuario_em_aulas(cur, usuario_id, lista_aula_ids):
-    """
-    INSERT com concluido=FALSE → UPDATE para TRUE (quando aplicável).
-
-    A modelagem atual não possui mais gamificação por pontos: o UPDATE
-    apenas registra a conclusão (concluido/data_conclusao) e não dispara
-    mais nenhuma trigger de pontuação (historico_pontuacao deixou de
-    existir).
-    """
     progresso = []
     for aula_id in lista_aula_ids:
         vai_concluir = fk.boolean(55)
@@ -805,18 +851,17 @@ def limpar_dados_banco(cur):
     """
     TRUNCATE em ordem de dependência (filhos antes dos pais).
 
-    Inclui tb_sindicos e tb_usuarios_comuns (subtipos de tb_usuarios) e os 3 subtipos
-    de auditoria (tb_log_auditoria_postagens, tb_log_auditoria_agendamentos_coletas,
-    tb_log_auditoria_usuarios_condominios), truncados antes do supertipo
-    tb_log_auditoria. historico_pontuacao e regras_pontuacao NÃO aparecem mais
-    aqui: deixaram de existir na modelagem atual.
+    Tabelas de domínio/lookup (tb_lkp_*) são mantidas propositalmente fora
+    desta lista: são seeds fixos, populados uma única vez e reaproveitados
+    entre execuções (tb_lkp_tipos_eventos_auditados e
+    tb_lkp_tipos_operacoes_auditoria já vêm semeadas pelo próprio
+    ecociente_schema.sql).
 
-    Tabelas de domínio/lookup (tb_lkp_tipos_usuarios, tb_lkp_tipos_condominios,
-    tb_lkp_tipos_avisos, tb_lkp_status_agendamentos, tb_lkp_dias_semanas,
-    tb_lkp_categorias_residuos, tb_lkp_tipos_eventos_auditados,
-    tb_lkp_tipos_operacoes_auditoria) são mantidas propositalmente fora desta
-    lista: são seeds fixos, populados uma única vez e reaproveitados entre
-    execuções.
+    tb_rel_votos_postagens e as tabelas de quiz (tb_quizzes,
+    tb_perguntas_quiz, tb_alternativas_quiz, tb_tentativas_quiz,
+    tb_rel_respostas_tentativas_quiz) não são geradas por este populador
+    ainda, mas entram no TRUNCATE por segurança (dependem de tb_postagens
+    / tb_aulas via FK).
     """
     tabelas = [
         "tb_notificacoes",
@@ -824,11 +869,17 @@ def limpar_dados_banco(cur):
         "tb_log_auditoria_agendamentos_coletas",
         "tb_log_auditoria_usuarios_condominios",
         "tb_log_auditoria",
+        "tb_rel_votos_postagens",
         "tb_postagens",
         "tb_avaliacoes_visitas_coletas",
         "tb_visitas_coletas",
         "tb_rel_recorrencias_agendamentos",
         "tb_agendamentos_coletas",
+        "tb_rel_respostas_tentativas_quiz",
+        "tb_tentativas_quiz",
+        "tb_alternativas_quiz",
+        "tb_perguntas_quiz",
+        "tb_quizzes",
         "tb_rel_usuarios_cursos",
         "tb_aulas",
         "tb_cursos",

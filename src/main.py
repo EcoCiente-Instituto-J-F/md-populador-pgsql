@@ -8,44 +8,45 @@ em ecociente_schema.sql) com dados fictícios em pt_BR, usando a classe
 FakerBR (faker_br.py), através das funções de utils/database.py.
 
 PRÉ-REQUISITO (rodar antes deste script):
-    ecociente_schema.sql — script único e completo: DDL de todas as tabelas
-    do DBML, FKs, CHECKs, a procedure sp_confirmar_passagem_cooperativa, as
-    triggers de auditoria (tb_postagens / tb_agendamentos_coletas /
-    tb_rel_usuarios_condominios) e a trigger de cache de recorrência
-    (tb_agendamentos_coletas.possui_recorrencia).
+    ecociente_schema.sql — DDL de todas as tabelas do DBML, FKs, CHECKs,
+    as functions fn_pontos_disponiveis_postagem / fn_calcular_trust_score,
+    as procedures sp_processar_voto_postagem / sp_atualizar_trust_score, e
+    as triggers de auditoria (tb_postagens / tb_agendamentos_coletas /
+    tb_rel_usuarios_condominios).
 
-Este script usa a procedure já existente no banco para a confirmação de
-passagem da cooperativa, em vez de simular a regra de negócio em Python:
-    - Confirmação de visita  -> CALL sp_confirmar_passagem_cooperativa(...)
-    - possui_recorrencia     -> atualizado automaticamente pelas triggers
-                                  trg_atualizar_recorrencia_insert/delete
-    - tb_log_auditoria       -> alimentada automaticamente pelas triggers de
-                                  auditoria em tb_postagens / tb_agendamentos_coletas /
-                                  tb_rel_usuarios_condominios (nenhuma linha é
-                                  inserida nela manualmente por este script)
+    O schema atual NÃO tem mais sp_confirmar_passagem_cooperativa nem
+    trigger de recorrência automática — este script reflete isso:
+    confirmar_visita() faz UPDATE direto, e possui_recorrencia é setado no
+    próprio INSERT de tb_agendamentos_coletas.
 
 A conexão é obtida via utils.helpers.get_connection(), que já devolve a
 conexão em autocommit=True. Isso simplifica o tratamento de erro: cada
-INSERT/CALL já fica persistido imediatamente, sem depender de um COMMIT
+INSERT/UPDATE já fica persistido imediatamente, sem depender de um COMMIT
 manual ao final do script — por isso, em caso de exceção, o bloco de
 tratamento chama limpar_dados_banco(cur) para descartar o que já tiver sido
 gravado nesta execução.
 
-A modelagem atual (class table inheritance) NÃO possui sistema de
-pontuação/gamificação nem moderação de postagem:
-    - Não existem as tabelas historico_pontuacao / regras_pontuacao.
-    - Não existe a procedure sp_validar_postagem, nem as colunas
-      status_postagem / pontos_gerados / validado_por_usuario_id /
-      validado_em em tb_postagens — toda postagem nasce e permanece só com os
-      dados de origem (usuario_id, condominio_id, categoria_id, url_foto,
-      data_postagem).
+Colunas de moderação/confiança que o schema atual exige (NOT NULL sem
+default) e que este script preenche:
+    - tb_rel_usuarios_condominios: trust_score (calculado via
+      fn_calcular_trust_score do próprio banco), postagens_validadas_sem_
+      contestacao, denuncias_realizadas, denuncias_procedentes.
+    - tb_postagens: hash_foto (único), capturada_em, saldo_confianca.
+
+Lookups de moderação semeados por este script (não vêm prontos no DDL):
+    tb_lkp_niveis_confianca, tb_lkp_status_validacoes_postagens,
+    tb_lkp_tipos_votos_postagens, tb_lkp_motivos_denuncia.
+    (tb_lkp_tipos_eventos_auditados e tb_lkp_tipos_operacoes_auditoria já
+    vêm semeadas pelo próprio ecociente_schema.sql — não precisam ser
+    populadas aqui.)
+
     - Síndicos: criar_usuario → criar_subtipo_sindico → retorna id_sindico
       (usado como FK em tb_condominios.sindico_id, não o usuario_id direto).
     - Usuários Comuns: criar_usuario → criar_subtipo_usuario_comum.
     - criar_condominio recebe sindico_id (tb_sindicos.id_sindico), não o
       usuario_id direto.
     - criar_cooperativa não recebe nome externo; retorna (cooperativa_id, nome).
-    - tb_unidades.condominio_id é NOT NULL sempre — mesmo unidades vinculadas
+    - tb_unidades.condominio_id é NOT NULL sempre — mesmo unidades ligadas
       a uma torre (torre_id) também precisam do condominio_id preenchido.
 
 Instalação:
@@ -99,6 +100,9 @@ from utils.database import (
     popular_categorias_residuos,
     popular_status_agendamentos,
     popular_niveis_confianca,
+    popular_status_validacoes_postagens,
+    popular_tipos_votos_postagens,
+    popular_motivos_denuncia,
     criar_usuario,
     criar_subtipo_sindico,
     criar_subtipo_usuario_comum,
@@ -143,9 +147,17 @@ def main():
         tipos_aviso = popular_tipos_avisos(cur)
         dias_semana = popular_dias_semana(cur)
         status_agendamento = popular_status_agendamentos(cur)
-        niveis_confianca = popular_niveis_confianca(cur)
         categorias = popular_categorias_residuos(cur)
         categorias_reciclaveis = [cid for nome, cid in categorias.items() if nome != "Rejeito"]
+
+        # Lookups de moderação/confiança — precisam existir ANTES de
+        # qualquer INSERT em tb_rel_usuarios_condominios/tb_postagens, pois
+        # ambas dependem do id 1 (morador_comum / aprovada) via DEFAULT ou
+        # FK explícita.
+        popular_niveis_confianca(cur)
+        popular_status_validacoes_postagens(cur)
+        popular_tipos_votos_postagens(cur)
+        popular_motivos_denuncia(cur)
 
         print("[2/9] Cursos e aulas (apenas os 2 cursos do domínio)...")
         cursos_ids, aulas_por_curso = popular_cursos_e_aulas(cur)
@@ -187,8 +199,8 @@ def main():
                 torre_id = criar_torre(cur, condominio_id, f"Torre {chr(65 + t)}")
                 for u in range(rng.randint(*UNIDADES_POR_TORRE)):
                     numero = f"{rng.randint(1, 20)}{str(u + 1).zfill(2)}"
-                    # tb_unidades.condominio_id é NOT NULL sempre: mesmo unidade
-                    # vinculada a uma torre precisa receber o condominio_id.
+                    # tb_unidades.condominio_id é NOT NULL sempre: mesmo
+                    # unidade vinculada a uma torre precisa do condominio_id.
                     unidade_id = criar_unidade(
                         cur, numero, "residencial",
                         torre_id=torre_id, condominio_id=condominio_id,
@@ -201,6 +213,7 @@ def main():
                         ocupantes.append({
                             "usuario_id": uid,
                             "condominio_id": condominio_id,
+                            "torre_id": torre_id,
                             "morador_id": morador_id,
                             "sindico_usuario_id": sindico_usuario_id,
                             "sindico_id": sindico_id,
@@ -233,6 +246,7 @@ def main():
                     ocupantes.append({
                         "usuario_id": uid,
                         "condominio_id": condominio_id,
+                        "torre_id": None,
                         "morador_id": morador_id,
                         "sindico_usuario_id": sindico_usuario_id,
                         "sindico_id": sindico_id,
@@ -253,7 +267,10 @@ def main():
             for _ in range(rng.randint(*POSTAGENS_POR_OCUPANTE)):
                 categoria_id = fk.random_element(categorias_reciclaveis)
                 data_postagem = fk.date_time_between(90, 0)
-                criar_postagem(cur, ocupante["usuario_id"], ocupante["condominio_id"], categoria_id, data_postagem)
+                criar_postagem(
+                    cur, ocupante["usuario_id"], ocupante["condominio_id"],
+                    categoria_id, data_postagem, torre_id=ocupante.get("torre_id"),
+                )
                 qtd_postagens += 1
 
         print(f"      -> {qtd_postagens} postagens criadas.")
@@ -324,12 +341,16 @@ def main():
             "tb_lkp_tipos_condominios", "tb_condominios", "tb_sindicos", "tb_usuarios_comuns",
             "tb_moradores", "tb_torres", "tb_unidades",
             "tb_enderecos", "tb_rel_usuarios_condominios", "tb_pontos_coletas", "tb_cooperativas",
-            "tb_lkp_niveis_confianca",
             "tb_lkp_categorias_residuos", "tb_rel_cooperativas_categorias_materiais",
-            "tb_rel_pontos_coletas_categorias", "tb_postagens",
+            "tb_rel_pontos_coletas_categorias",
+            "tb_lkp_niveis_confianca", "tb_lkp_status_validacoes_postagens",
+            "tb_lkp_tipos_votos_postagens", "tb_lkp_motivos_denuncia",
+            "tb_postagens", "tb_rel_votos_postagens",
             "tb_lkp_tipos_avisos", "tb_avisos", "tb_lkp_status_agendamentos",
             "tb_agendamentos_coletas", "tb_visitas_coletas", "tb_avaliacoes_visitas_coletas",
             "tb_lkp_dias_semanas", "tb_rel_recorrencias_agendamentos", "tb_cursos", "tb_aulas",
+            "tb_quizzes", "tb_perguntas_quiz", "tb_alternativas_quiz",
+            "tb_tentativas_quiz", "tb_rel_respostas_tentativas_quiz",
             "tb_rel_usuarios_cursos",
             "tb_lkp_tipos_eventos_auditados", "tb_lkp_tipos_operacoes_auditoria", "tb_log_auditoria",
             "tb_log_auditoria_postagens", "tb_log_auditoria_agendamentos_coletas",
@@ -342,12 +363,42 @@ def main():
         print("\nObs.: tb_log_auditoria foi populada 100% automaticamente pelas triggers")
         print("(trg_auditoria_postagens / trg_auditoria_agendamentos_coletas / trg_auditoria_usuarios_condominios)")
         print("a cada INSERT/UPDATE feito neste script -- nenhuma linha foi inserida nela manualmente.")
+        print("\nObs.: tb_rel_votos_postagens e as tabelas de quiz (tb_quizzes/tb_perguntas_quiz/")
+        print("tb_alternativas_quiz/tb_tentativas_quiz/tb_rel_respostas_tentativas_quiz) ainda não")
+        print("são geradas por este populador -- por isso aparecem com 0 linhas acima.")
     except Exception as e:
         print("\n[ERRO]", e)
-        limpar_dados_banco(cur)
+        # Se a conexão/cursor morreu no meio do erro original (ex.: o
+        # servidor derrubou a conexão), tentar limpar com esse mesmo `cur`
+        # só gera um segundo erro em cascata (InterfaceError: cursor already
+        # closed) que mascara a causa real. Nesse caso, abre-se uma conexão
+        # NOVA só para a limpeza.
+        try:
+            limpar_dados_banco(cur)
+        except Exception as cleanup_error:
+            print("[AVISO] Não foi possível limpar usando a conexão original "
+                  f"({cleanup_error}). Tentando com uma nova conexão...")
+            try:
+                conn2 = get_connection()
+                cur2 = conn2.cursor()
+                limpar_dados_banco(cur2)
+                cur2.close()
+                conn2.close()
+            except Exception as cleanup_error2:
+                print("[AVISO] Limpeza automática falhou mesmo com nova conexão "
+                      f"({cleanup_error2}).")
+                print("        Rode manualmente um TRUNCATE nas tabelas de negócio "
+                      "antes da próxima execução, ou reexecute este script assim "
+                      "que a conexão com o banco estiver estável novamente.")
     finally:
-        cur.close()
-        conn.close()
+        try:
+            cur.close()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass n
 
 
 if __name__ == "__main__":
