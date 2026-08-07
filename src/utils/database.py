@@ -4,6 +4,7 @@
 import os
 import sys
 import random
+import hashlib
 from datetime import timedelta
 
 from .helpers import fetch_id, call_procedure, DSN
@@ -172,6 +173,38 @@ def popular_status_agendamentos(cur):
             "INSERT INTO tb_lkp_status_agendamentos (nome_status) "
             "VALUES (%s) RETURNING id_status",
             (nome,),
+        )
+    return ids
+
+
+def popular_niveis_confianca(cur):
+    """
+    tb_rel_usuarios_condominios.nivel_confianca_id tem DEFAULT 1 e a
+    procedure sp_atualizar_trust_score busca 'pessoa_confiavel' pelo nome
+    (ver a.sql). Por isso a ordem de inserção importa: 'morador_comum'
+    precisa ser a primeira linha (id 1), já que é o default de todo vínculo
+    novo em tb_rel_usuarios_condominios.
+    """
+    niveis = [
+        ("morador_comum",    1, "Morador/usuário comum recém-vinculado ao condomínio."),
+        ("pessoa_confiavel", 3, "Promovido automaticamente após acúmulo de trust_score."),
+        ("sindico",          3, "Síndico do condomínio."),
+    ]
+    ids = {}
+    for nome, peso_voto, desc in niveis:
+        cur.execute(
+            "SELECT id_nivel_confianca FROM tb_lkp_niveis_confianca WHERE nome_nivel = %s",
+            (nome,),
+        )
+        row = cur.fetchone()
+        if row:
+            ids[nome] = row[0]
+            continue
+        ids[nome] = fetch_id(
+            cur,
+            "INSERT INTO tb_lkp_niveis_confianca (nome_nivel, peso_voto, descricao) "
+            "VALUES (%s, %s, %s) RETURNING id_nivel_confianca",
+            (nome, peso_voto, desc),
         )
     return ids
 
@@ -379,15 +412,31 @@ def criar_vinculo_condominio(cur, usuario_id, condominio_id, aprovado_por_usuari
     aprovado     = fk.boolean(92)
     saiu         = fk.boolean(8)
     data_saida   = fk.date_time_between(29, 0) if saiu else None
+
+    # tb_rel_usuarios_condominios exige NOT NULL em trust_score e nos três
+    # contadores (postagens_validadas_sem_contestacao, denuncias_realizadas,
+    # denuncias_procedentes) — o schema não tem DEFAULT para essas colunas.
+    # Todo vínculo novo começa "zerado"; quem for atualizar os contadores
+    # depois deve chamar sp_atualizar_trust_score (que recalcula trust_score
+    # via fn_calcular_trust_score) em vez de escrever direto nessas colunas.
+    postagens_validadas_sem_contestacao = 0
+    denuncias_realizadas                = 0
+    denuncias_procedentes               = 0
+    trust_score                         = 0  # == fn_calcular_trust_score(0, 0, 0)
+
     return fetch_id(
         cur,
         """INSERT INTO tb_rel_usuarios_condominios
                (usuario_id, condominio_id, data_entrada, data_saida,
-                aprovado, aprovado_por_usuario_id)
-           VALUES (%s, %s, %s, %s, %s, %s)
+                aprovado, aprovado_por_usuario_id,
+                trust_score, postagens_validadas_sem_contestacao,
+                denuncias_realizadas, denuncias_procedentes)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            RETURNING id_usuario_condominio""",
         (usuario_id, condominio_id, data_entrada, data_saida,
-         aprovado, aprovado_por_usuario_id),
+         aprovado, aprovado_por_usuario_id,
+         trust_score, postagens_validadas_sem_contestacao,
+         denuncias_realizadas, denuncias_procedentes),
     )
 
 
@@ -470,15 +519,28 @@ def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem):
     Todo INSERT/UPDATE/DELETE nesta tabela dispara trg_auditoria_postagens,
     que grava automaticamente em tb_log_auditoria + tb_log_auditoria_postagens.
     """
+    # hash_foto, capturada_em e saldo_confianca são NOT NULL sem DEFAULT no
+    # schema. capturada_em precisa satisfazer ck_postagens_capturada_em
+    # (capturada_em <= data_postagem), então geramos um instante um pouco
+    # antes da postagem. hash_foto é UNIQUE, então usamos um valor aleatório
+    # por postagem (hex de 64 chars, como um SHA-256).
+    hash_foto = hashlib.sha256(
+        f"{usuario_id}-{condominio_id}-{categoria_id}-{rng.random()}".encode()
+    ).hexdigest()
+    capturada_em = data_postagem - timedelta(minutes=rng.randint(1, 30))
+    saldo_confianca = 0  # ninguém votou ainda na postagem recém-criada
+
     return fetch_id(
         cur,
         """INSERT INTO tb_postagens
-               (usuario_id, condominio_id, categoria_id, url_foto, data_postagem)
-           VALUES (%s, %s, %s, %s, %s)
+               (usuario_id, condominio_id, categoria_id, url_foto,
+                hash_foto, capturada_em, data_postagem, saldo_confianca)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
            RETURNING id_postagem""",
         (
             usuario_id, condominio_id, categoria_id,
-            fk.url(path="postagens", ext="jpg"), data_postagem,
+            fk.url(path="postagens", ext="jpg"),
+            hash_foto, capturada_em, data_postagem, saldo_confianca,
         ),
     )
 

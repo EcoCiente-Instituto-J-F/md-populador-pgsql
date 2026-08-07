@@ -10,18 +10,18 @@ FakerBR (faker_br.py), através das funções de utils/database.py.
 PRÉ-REQUISITO (rodar antes deste script):
     ecociente_schema.sql — script único e completo: DDL de todas as tabelas
     do DBML, FKs, CHECKs, a procedure sp_confirmar_passagem_cooperativa, as
-    triggers de auditoria (postagens / agendamentos_coletas /
-    usuarios_condominios) e a trigger de cache de recorrência
-    (agendamentos_coletas.possui_recorrencia).
+    triggers de auditoria (tb_postagens / tb_agendamentos_coletas /
+    tb_rel_usuarios_condominios) e a trigger de cache de recorrência
+    (tb_agendamentos_coletas.possui_recorrencia).
 
 Este script usa a procedure já existente no banco para a confirmação de
 passagem da cooperativa, em vez de simular a regra de negócio em Python:
     - Confirmação de visita  -> CALL sp_confirmar_passagem_cooperativa(...)
     - possui_recorrencia     -> atualizado automaticamente pelas triggers
                                   trg_atualizar_recorrencia_insert/delete
-    - auditoria_log          -> alimentada automaticamente pelas triggers de
-                                  auditoria em postagens / agendamentos_coletas /
-                                  usuarios_condominios (nenhuma linha é
+    - tb_log_auditoria       -> alimentada automaticamente pelas triggers de
+                                  auditoria em tb_postagens / tb_agendamentos_coletas /
+                                  tb_rel_usuarios_condominios (nenhuma linha é
                                   inserida nela manualmente por este script)
 
 A conexão é obtida via utils.helpers.get_connection(), que já devolve a
@@ -36,15 +36,17 @@ pontuação/gamificação nem moderação de postagem:
     - Não existem as tabelas historico_pontuacao / regras_pontuacao.
     - Não existe a procedure sp_validar_postagem, nem as colunas
       status_postagem / pontos_gerados / validado_por_usuario_id /
-      validado_em em postagens — toda postagem nasce e permanece só com os
+      validado_em em tb_postagens — toda postagem nasce e permanece só com os
       dados de origem (usuario_id, condominio_id, categoria_id, url_foto,
       data_postagem).
     - Síndicos: criar_usuario → criar_subtipo_sindico → retorna id_sindico
-      (usado como FK em condominios.sindico_id, não o usuario_id direto).
+      (usado como FK em tb_condominios.sindico_id, não o usuario_id direto).
     - Usuários Comuns: criar_usuario → criar_subtipo_usuario_comum.
-    - criar_condominio recebe sindico_id (sindicos.id_sindico), não o
+    - criar_condominio recebe sindico_id (tb_sindicos.id_sindico), não o
       usuario_id direto.
     - criar_cooperativa não recebe nome externo; retorna (cooperativa_id, nome).
+    - tb_unidades.condominio_id é NOT NULL sempre — mesmo unidades vinculadas
+      a uma torre (torre_id) também precisam do condominio_id preenchido.
 
 Instalação:
     pip install psycopg2-binary --break-system-packages
@@ -96,6 +98,7 @@ from utils.database import (
     popular_dias_semana,
     popular_categorias_residuos,
     popular_status_agendamentos,
+    popular_niveis_confianca,
     criar_usuario,
     criar_subtipo_sindico,
     criar_subtipo_usuario_comum,
@@ -140,6 +143,7 @@ def main():
         tipos_aviso = popular_tipos_avisos(cur)
         dias_semana = popular_dias_semana(cur)
         status_agendamento = popular_status_agendamentos(cur)
+        niveis_confianca = popular_niveis_confianca(cur)
         categorias = popular_categorias_residuos(cur)
         categorias_reciclaveis = [cid for nome, cid in categorias.items() if nome != "Rejeito"]
 
@@ -183,7 +187,12 @@ def main():
                 torre_id = criar_torre(cur, condominio_id, f"Torre {chr(65 + t)}")
                 for u in range(rng.randint(*UNIDADES_POR_TORRE)):
                     numero = f"{rng.randint(1, 20)}{str(u + 1).zfill(2)}"
-                    unidade_id = criar_unidade(cur, numero, "residencial", torre_id=torre_id)
+                    # tb_unidades.condominio_id é NOT NULL sempre: mesmo unidade
+                    # vinculada a uma torre precisa receber o condominio_id.
+                    unidade_id = criar_unidade(
+                        cur, numero, "residencial",
+                        torre_id=torre_id, condominio_id=condominio_id,
+                    )
                     if fk.boolean(CHANCE_UNIDADE_OCUPADA):
                         tipo_ocupante = tipos_usuario["Morador Residencial"]
                         uid, _ = criar_usuario(cur, tipo_ocupante)
@@ -197,7 +206,7 @@ def main():
                             "sindico_id": sindico_id,
                         })
 
-            # avisos do síndico: criado_por_usuario_id aponta para usuarios diretamente
+            # avisos do síndico: criado_por_usuario_id aponta para tb_usuarios diretamente
             for _ in range(rng.randint(2, 5)):
                 criar_aviso(cur, condominio_id, sindico_usuario_id, fk.random_element(list(tipos_aviso.values())))
 
@@ -237,9 +246,8 @@ def main():
         print(f"      -> {len(ocupantes)} ocupantes (moradores/usuários comerciais) gerados.")
 
         print("[7/9] Postagens de descarte...")
-        # Todo
-        # INSERT dispara trg_auditoria_postagens, que grava automaticamente
-        # em auditoria_log + auditoria_postagens.
+        # Todo INSERT dispara trg_auditoria_postagens, que grava automaticamente
+        # em tb_log_auditoria + tb_log_auditoria_postagens.
         qtd_postagens = 0
         for ocupante in ocupantes:
             for _ in range(rng.randint(*POSTAGENS_POR_OCUPANTE)):
@@ -279,7 +287,7 @@ def main():
                             qtd_visitas_recusadas += 1
 
                         if fk.boolean(70):
-                            # avaliador é o síndico como usuário (usuarios.id_usuario)
+                            # avaliador é o síndico como usuário (tb_usuarios.id_usuario)
                             sindico_da_visita = next(
                                 (o["sindico_usuario_id"] for o in ocupantes if o["condominio_id"] == condominio_id), None
                             )
@@ -311,40 +319,27 @@ def main():
         print("\n" + "=" * 78)
         print("Carga concluída. Resumo de linhas por tabela:")
         print("=" * 78)
-        tabelas = ["tb_notificacoes",
-        "tb_log_auditoria_postagens",
-        "tb_log_auditoria_agendamentos_coletas",
-        "tb_log_auditoria_usuarios_condominios",
-        "tb_log_auditoria",
-        "tb_postagens",
-        "tb_avaliacoes_visitas_coletas",
-        "tb_visitas_coletas",
-        "tb_rel_recorrencias_agendamentos",
-        "tb_agendamentos_coletas",
-        "tb_rel_usuarios_cursos",
-        "tb_aulas",
-        "tb_cursos",
-        "tb_avisos",
-        "tb_rel_usuarios_condominios",
-        "tb_moradores",
-        "tb_usuarios_comuns",
-        "tb_sindicos",
-        "tb_unidades",
-        "tb_torres",
-        "tb_condominios",
-        "tb_cooperativas",
-        "tb_pontos_coletas",
-        "tb_rel_cooperativas_categorias_materiais",
-        "tb_rel_pontos_coletas_categorias",
-        "tb_enderecos",
-        "tb_telefones",
-        "tb_usuarios",
-    ]
+        tabelas = [
+            "tb_lkp_tipos_usuarios", "tb_usuarios", "tb_telefones", "tb_notificacoes",
+            "tb_lkp_tipos_condominios", "tb_condominios", "tb_sindicos", "tb_usuarios_comuns",
+            "tb_moradores", "tb_torres", "tb_unidades",
+            "tb_enderecos", "tb_rel_usuarios_condominios", "tb_pontos_coletas", "tb_cooperativas",
+            "tb_lkp_niveis_confianca",
+            "tb_lkp_categorias_residuos", "tb_rel_cooperativas_categorias_materiais",
+            "tb_rel_pontos_coletas_categorias", "tb_postagens",
+            "tb_lkp_tipos_avisos", "tb_avisos", "tb_lkp_status_agendamentos",
+            "tb_agendamentos_coletas", "tb_visitas_coletas", "tb_avaliacoes_visitas_coletas",
+            "tb_lkp_dias_semanas", "tb_rel_recorrencias_agendamentos", "tb_cursos", "tb_aulas",
+            "tb_rel_usuarios_cursos",
+            "tb_lkp_tipos_eventos_auditados", "tb_lkp_tipos_operacoes_auditoria", "tb_log_auditoria",
+            "tb_log_auditoria_postagens", "tb_log_auditoria_agendamentos_coletas",
+            "tb_log_auditoria_usuarios_condominios",
+        ]
         for tabela in tabelas:
             cur.execute(f"SELECT COUNT(*) FROM {tabela}")
             print(f"  {tabela:38s} {cur.fetchone()[0]:>6d}")
 
-        print("\nObs.: auditoria_log foi populada 100% automaticamente pelas triggers")
+        print("\nObs.: tb_log_auditoria foi populada 100% automaticamente pelas triggers")
         print("(trg_auditoria_postagens / trg_auditoria_agendamentos_coletas / trg_auditoria_usuarios_condominios)")
         print("a cada INSERT/UPDATE feito neste script -- nenhuma linha foi inserida nela manualmente.")
     except Exception as e:
