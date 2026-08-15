@@ -1,0 +1,63 @@
+name: EcoCiente PR Bot
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ecociente-pr-bot-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  generate-pr-description:
+    name: Gerar descrição da Pull Request
+
+    # Por segurança, nesta primeira versão o bot só funciona
+    # para branches criadas dentro do próprio repositório.
+    # PRs vindas de forks externos não usarão a chave do Gemini.
+    if: >
+      github.event.pull_request.head.repo.full_name ==
+      github.repository
+
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 10
+
+    steps:
+      - name: Baixar código confiável da branch base
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Configurar Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: scripts/pr-bot/requirements.txt
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r scripts/pr-bot/requirements.txt
+
+      - name: Gerar descrição da Pull Request
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: gemini-3.6-flash
+
+        run: |
+          python scripts/pr-bot/generate_pr.py
