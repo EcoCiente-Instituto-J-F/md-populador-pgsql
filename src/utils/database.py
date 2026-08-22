@@ -1,10 +1,9 @@
 # ==============================================================================
 # EcoCiente – camada de acesso a dados para a carga inicial de massa
 # ==============================================================================
-import os
-import sys
 import random
 import hashlib
+import psycopg2
 from datetime import timedelta
 
 from .helpers import fetch_id, call_procedure, DSN
@@ -22,12 +21,12 @@ N_COOPERATIVAS              = 3
 N_USUARIOS_COMUM            = 12
 
 TORRES_POR_RESIDENCIAL      = (2, 3)
-UNIDADES_POR_TORRE          = (4, 8)
-UNIDADES_POR_COMERCIAL      = (5, 10)
-CHANCE_UNIDADE_OCUPADA      = 80
+MORADORES_POR_TORRE         = (2, 5)
+USUARIOS_POR_COMERCIAL      = (4, 8)
 
 PONTOS_COLETA_POR_COOPERATIVA = (2, 3)
 POSTAGENS_POR_OCUPANTE        = (0, 6)
+VOTOS_POR_POSTAGEM            = (0, 6)
 NOTIFICACOES_POR_USUARIO      = (2, 5)
 AGENDAMENTOS_POR_CONDOMINIO   = (1, 2)
 VISITAS_POR_AGENDAMENTO       = (2, 5)
@@ -52,7 +51,7 @@ def popular_tipos_usuarios(cur):
          "Gestor de condomínio comercial. Fluxo corporativo: calendário, "
          "mapa, analytics (macro) e ensino."),
         ("Morador Residencial",
-         "Ocupante de unidade em condomínio residencial. Ranking, analytics "
+         "Ocupante de condomínio residencial. Ranking, analytics "
          "individual e ensino."),
         ("Usuário Comercial",
          "Ocupante/usuário de condomínio comercial. Analytics individual, "
@@ -84,7 +83,7 @@ def popular_tipos_usuarios(cur):
 
 def popular_tipos_condominios(cur):
     tipos = [
-        ("Residencial", "Condomínio residencial (tb_torres/tb_unidades habitacionais)."),
+        ("Residencial", "Condomínio residencial (tb_torres + tb_moradores)."),
         ("Comercial",   "Condomínio/edifício comercial."),
     ]
     ids = {}
@@ -101,33 +100,6 @@ def popular_tipos_condominios(cur):
             cur,
             "INSERT INTO tb_lkp_tipos_condominios (nome_tipo, descricao) "
             "VALUES (%s, %s) RETURNING id_tipo_condominio",
-            (nome, desc),
-        )
-    return ids
-
-
-def popular_tipos_avisos(cur):
-    tipos = [
-        ("Comunicado",        "Aviso geral do condomínio."),
-        ("Manutenção",        "Aviso de manutenção predial."),
-        ("Evento",            "Evento ou campanha do condomínio."),
-        ("Campanha Ambiental","Campanha de conscientização ambiental/reciclagem."),
-        ("Segurança",         "Aviso de segurança do condomínio."),
-    ]
-    ids = {}
-    for nome, desc in tipos:
-        cur.execute(
-            "SELECT id_tipo_aviso FROM tb_lkp_tipos_avisos WHERE nome_tipo = %s",
-            (nome,),
-        )
-        row = cur.fetchone()
-        if row:
-            ids[nome] = row[0]
-            continue
-        ids[nome] = fetch_id(
-            cur,
-            "INSERT INTO tb_lkp_tipos_avisos (nome_tipo, descricao) "
-            "VALUES (%s, %s) RETURNING id_tipo_aviso",
             (nome, desc),
         )
     return ids
@@ -208,13 +180,8 @@ def popular_categorias_residuos(cur):
 
 
 def popular_niveis_confianca(cur):
-    """
-    ATENÇÃO À ORDEM: tb_rel_usuarios_condominios.nivel_confianca_id tem
-    DEFAULT 1, e o comentário da coluna no schema diz "Default =
-    morador_comum (id 1)". "morador_comum" TEM que ser inserido primeiro
-    (se a tabela já tiver linhas de execuções anteriores, a ordem não
-    importa mais).
-    """
+    # nivel_confianca_id tem DEFAULT 1 = morador_comum, então precisa ser
+    # o primeiro inserido para cair no id certo.
     niveis = [
         ("morador_comum",    1, "Nível padrão de qualquer vínculo aprovado."),
         ("pessoa_confiavel", 3, "Promovido automaticamente ao atingir o trust_score mínimo."),
@@ -240,11 +207,8 @@ def popular_niveis_confianca(cur):
 
 
 def popular_status_validacoes_postagens(cur):
-    """
-    ATENÇÃO À ORDEM: tb_postagens.status_validacao_id tem DEFAULT 1, e o
-    comentário da coluna diz "Default = aprovada (id 1)". "aprovada" TEM
-    que ser a primeira a ser inserida aqui.
-    """
+    # status_validacao_id tem DEFAULT 1 = aprovada, então precisa ser o
+    # primeiro inserido para cair no id certo.
     status = [
         ("aprovada",   "Postagem validada pela comunidade/moderação."),
         ("em_analise", "Aguardando votos suficientes da comunidade."),
@@ -321,13 +285,13 @@ def popular_motivos_denuncia(cur):
 # ==============================================================================
 
 def criar_endereco(cur):
-    uf, cidade, cep, rua, numero, lat, lng = fk.address_tuple()
+    uf, cidade, cep, rua, numero = fk.address_tuple()
     return fetch_id(
         cur,
         """INSERT INTO tb_enderecos
-               (cep, estado, cidade, logradouro, numero, complemento, latitude, longitude)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id_endereco""",
-        (cep, uf, cidade, rua, numero, fk.secondary_address(), lat, lng),
+               (cep, estado, cidade, logradouro, numero, complemento)
+           VALUES (%s, %s, %s, %s, %s, %s) RETURNING id_endereco""",
+        (cep, uf, cidade, rua, numero, fk.secondary_address()),
     )
 
 
@@ -335,12 +299,9 @@ def criar_usuario(cur, tipo_usuario_id, n_telefones=(1, 1)):
     """
     Insere em tb_usuarios + tb_telefones. Retorna (usuario_id, nome).
 
-    ATENÇÃO: NÃO insere no subtipo (tb_sindicos / tb_usuarios_comuns / tb_moradores /
-    tb_cooperativas). Chame a função de subtipo adequada logo após:
-        - criar_subtipo_sindico(cur, usuario_id)
-        - criar_subtipo_usuario_comum(cur, usuario_id)
-        - criar_morador(cur, usuario_id, unidade_id)
-        - criar_cooperativa(cur, usuario_id)
+    Não insere no subtipo -- chame criar_subtipo_sindico ou criar_morador
+    logo após, quando aplicável. "Usuário Comum", "Cooperativa" e
+    "Administrador" não têm tabela de subtipo.
     """
     nome        = fk.name()
     email       = fk.email(nome)
@@ -354,7 +315,7 @@ def criar_usuario(cur, tipo_usuario_id, n_telefones=(1, 1)):
     usuario_id = fetch_id(
         cur,
         """INSERT INTO tb_usuarios
-               (nome_usuario, email_usuario, senha_hash, data_nascimento, cpf_cnpj,
+               (nome_usuario, email_usuario, senha_hash, data_nascimento, cpf,
                 url_avatar, ativo, registro_em, tipo_usuario_id)
            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
            RETURNING id_usuario""",
@@ -389,16 +350,8 @@ def criar_subtipo_sindico(cur, usuario_id):
     )
 
 
-def criar_subtipo_usuario_comum(cur, usuario_id):
-    return fetch_id(
-        cur,
-        "INSERT INTO tb_usuarios_comuns (usuario_id) VALUES (%s) RETURNING id_usuario_comum",
-        (usuario_id,),
-    )
-
-
 # ==============================================================================
-# 3. CONDOMÍNIOS, TORRES, UNIDADES, MORADORES
+# 3. CONDOMÍNIOS, TORRES, MORADORES
 # ==============================================================================
 
 _codigo_acesso_seq = 0
@@ -437,44 +390,27 @@ def criar_torre(cur, condominio_id, nome_torre):
     )
 
 
-def criar_unidade(cur, numero, tipo_unidade, torre_id=None, condominio_id=None):
-    """
-    tb_unidades.condominio_id é NOT NULL sempre — mesmo unidade vinculada a
-    uma torre também precisa receber o condominio_id.
-    """
+def criar_morador(cur, usuario_id, condominio_id):
+    # tb_moradores só tem usuario_id x condominio_id -- sem unidade/torre.
+    # A torre de um ocupante residencial fica só no dict `ocupante` em
+    # main.py, para popular tb_postagens.torre_id e as tentativas de quiz.
     return fetch_id(
         cur,
-        """INSERT INTO tb_unidades (numero_unidade, tipo_unidade, torre_id, condominio_id)
-           VALUES (%s, %s, %s, %s) RETURNING id_unidade""",
-        (numero, tipo_unidade, torre_id, condominio_id),
-    )
-
-
-def criar_morador(cur, usuario_id, unidade_id):
-    return fetch_id(
-        cur,
-        """INSERT INTO tb_moradores (usuario_id, unidade_id)
+        """INSERT INTO tb_moradores (usuario_id, condominio_id)
            VALUES (%s, %s) RETURNING id_morador""",
-        (usuario_id, unidade_id),
+        (usuario_id, condominio_id),
     )
 
 
 def criar_vinculo_condominio(cur, usuario_id, condominio_id, aprovado_por_usuario_id=None):
     """
-    tb_rel_usuarios_condominios tem colunas de confiança NOT NULL sem
-    default (trust_score, postagens_validadas_sem_contestacao,
-    denuncias_realizadas, denuncias_procedentes). Geramos contadores
-    plausíveis e usamos a própria fn_calcular_trust_score(...) do banco
-    (mesma fórmula usada por sp_atualizar_trust_score) para calcular o
-    trust_score, garantindo consistência com a regra de negócio real.
+    Cria o vínculo em tb_rel_usuarios_condominios com contadores de
+    confiança plausíveis (trust_score via fn_calcular_trust_score) --
+    recalcular_trust_scores() depois substitui pelos valores reais.
 
-    nivel_confianca_id fica no DEFAULT (1 = morador_comum): a promoção a
-    pessoa_confiavel só acontece via sp_atualizar_trust_score, que não é
-    chamada aqui (esta carga não simula o histórico real de postagens/votos
-    necessário pra justificar a promoção).
-
-    Todo INSERT/UPDATE nesta tabela dispara trg_auditoria_usuarios_condominios,
-    que grava automaticamente em tb_log_auditoria + tb_log_auditoria_usuarios_condominios.
+    Retorna (id_usuario_condominio, aprovado): `aprovado` indica se esse
+    usuário pode votar em postagens do condomínio via
+    sp_processar_voto_postagem.
     """
     data_entrada = fk.date_time_between(700, 30)
     aprovado     = fk.boolean(92)
@@ -495,7 +431,7 @@ def criar_vinculo_condominio(cur, usuario_id, condominio_id, aprovado_por_usuari
     )
     trust_score = cur.fetchone()[0]
 
-    return fetch_id(
+    usuario_condominio_id = fetch_id(
         cur,
         """INSERT INTO tb_rel_usuarios_condominios
                (usuario_id, condominio_id, data_entrada, data_saida,
@@ -509,6 +445,21 @@ def criar_vinculo_condominio(cur, usuario_id, condominio_id, aprovado_por_usuari
          postagens_validadas, denuncias_realizadas,
          denuncias_procedentes, taxa_acerto_denuncias),
     )
+    return usuario_condominio_id, aprovado
+
+
+def recalcular_trust_scores(cur):
+    """
+    Chama sp_atualizar_trust_score para cada vínculo usuário x condomínio,
+    recalculando trust_score/nivel_confianca a partir das postagens e
+    votos reais. Rodar depois de simular postagens e votos.
+    """
+    cur.execute("SELECT usuario_id, condominio_id FROM tb_rel_usuarios_condominios")
+    vinculos = cur.fetchall()
+    for usuario_id, condominio_id in vinculos:
+        call_procedure(
+            cur, "CALL sp_atualizar_trust_score(%s, %s)", (usuario_id, condominio_id)
+        )
 
 
 # ==============================================================================
@@ -574,21 +525,13 @@ def vincular_categorias_ponto_coleta(cur, ponto_coleta_id, categoria_ids_recicla
 
 
 # ==============================================================================
-# 5. POSTAGENS DE DESCARTE
+# 5. POSTAGENS DE DESCARTE + MODERAÇÃO (VOTOS)
 # ==============================================================================
 
 def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem, torre_id=None):
-    """
-    tb_postagens tem colunas de moderação NOT NULL sem default:
-    hash_foto (único, impede foto reaproveitada), capturada_em (timestamp
-    da câmera, deve ser <= data_postagem) e saldo_confianca (soma dos
-    pesos de voto — nasce em 0, pois esta carga não simula o fluxo de
-    votação via sp_processar_voto_postagem). status_validacao_id fica no
-    DEFAULT (1 = 'aprovada').
-
-    Todo INSERT/UPDATE/DELETE nesta tabela dispara trg_auditoria_postagens,
-    que grava automaticamente em tb_log_auditoria + tb_log_auditoria_postagens.
-    """
+    # saldo_confianca nasce em 0 -- simular_votos_postagem() é quem
+    # incrementa via sp_processar_voto_postagem. status_validacao_id fica
+    # no DEFAULT (aprovada) até algum voto resolver a postagem.
     capturada_em = data_postagem - timedelta(minutes=rng.randint(1, 30))
     hash_foto = hashlib.sha256(
         f"{usuario_id}-{condominio_id}-{categoria_id}-"
@@ -610,42 +553,46 @@ def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem, 
     )
 
 
-# ==============================================================================
-# 6. AVISOS
-# ==============================================================================
+def simular_votos_postagem(cur, postagem_id, usuario_dono_id, votantes_do_condominio,
+                            motivos_denuncia_ids):
+    """
+    Simula de 0 a VOTOS_POR_POSTAGEM votos via sp_processar_voto_postagem,
+    que calcula o peso do voto, atualiza saldo_confianca e resolve o
+    status da postagem ao atingir os limiares. votantes_do_condominio deve
+    conter só usuario_ids com vínculo aprovado=TRUE nesse condomínio.
+    """
+    candidatos = [uid for uid in votantes_do_condominio if uid != usuario_dono_id]
+    if not candidatos:
+        return
 
-def criar_aviso(cur, condominio_id, criado_por_usuario_id, tipo_aviso_id):
-    cur.execute(
-        """INSERT INTO tb_avisos
-               (titulo_mensagem, conteudo_mensagem, criado_em,
-                condominio_id, criado_por_usuario_id, tipo_aviso_id)
-           VALUES (%s, %s, %s, %s, %s, %s)""",
-        (
-            fk.sentence(5).rstrip("."),
-            fk.sentence(14),
-            fk.date_time_between(365, 0),
-            condominio_id,
-            criado_por_usuario_id,
-            tipo_aviso_id,
-        ),
-    )
+    qtd_votos = rng.randint(0, min(len(candidatos), VOTOS_POR_POSTAGEM[1]))
+    if qtd_votos == 0:
+        return
+
+    votantes = fk.random_elements(candidatos, length=qtd_votos, unique=True)
+    for usuario_id in votantes:
+        tipo_voto = "aprovar" if fk.boolean(75) else "denunciar"
+        motivo_id = fk.random_element(motivos_denuncia_ids) if tipo_voto == "denunciar" else None
+        comentario = fk.sentence(6) if fk.boolean(30) else None
+        try:
+            call_procedure(
+                cur,
+                "CALL sp_processar_voto_postagem(%s, %s, %s, %s, %s)",
+                (postagem_id, usuario_id, tipo_voto, motivo_id, comentario),
+            )
+        except psycopg2.Error:
+            # postagem já foi resolvida por um voto anterior desta rodada
+            break
 
 
 # ==============================================================================
-# 7. AGENDAMENTOS, VISITAS, RECORRÊNCIAS E AVALIAÇÕES
+# 6. AGENDAMENTOS, VISITAS, RECORRÊNCIAS E AVALIAÇÕES
 # ==============================================================================
 
 def criar_agendamento(cur, condominio_id, cooperativa_id,
                       status_agendamento_id, recorrente):
-    """
-    possui_recorrencia é setado diretamente aqui, no INSERT — o schema
-    atual NÃO tem trigger que recalcula essa coluna automaticamente a
-    partir de tb_rel_recorrencias_agendamentos.
-
-    Todo INSERT/UPDATE/DELETE nesta tabela dispara
-    trg_auditoria_agendamentos_coletas, que grava automaticamente em
-    tb_log_auditoria + tb_log_auditoria_agendamentos_coletas.
-    """
+    # possui_recorrencia é setado direto aqui -- não há trigger que
+    # recalcule a partir de tb_rel_recorrencias_agendamentos.
     data_inicio = fk.date_time_between(180, 0)
     data_fim    = data_inicio + timedelta(hours=2)
     return fetch_id(
@@ -682,11 +629,6 @@ def criar_visita(cur, agendamento_coleta_id, data_visita):
 
 
 def confirmar_visita(cur, visita_id, confirmou, observacao=None):
-    """
-    O schema atual NÃO tem a procedure sp_confirmar_passagem_cooperativa
-    (ela existia em uma versão anterior do banco). A confirmação agora é
-    um UPDATE direto em tb_visitas_coletas.
-    """
     cur.execute(
         """UPDATE tb_visitas_coletas
            SET foi_realizada = %s,
@@ -714,7 +656,7 @@ def criar_avaliacao_visita(cur, visita_coleta_id, usuario_avaliador_id):
 
 
 # ==============================================================================
-# 8. CURSOS, AULAS E PROGRESSO
+# 7. CURSOS, AULAS, QUIZZES E PROGRESSO
 # ==============================================================================
 
 def popular_cursos_e_aulas(cur):
@@ -785,7 +727,101 @@ def popular_cursos_e_aulas(cur):
     return cursos_ids, aulas_ids
 
 
+# Banco fixo de perguntas/alternativas reaproveitado por todos os quizzes.
+_PERGUNTAS_MODELO = [
+    ("Qual desses materiais é reciclável?",
+     ["Papel limpo e seco", "Isopor sujo de comida", "Fralda descartável usada", "Absorvente"], 0),
+    ("Antes de descartar uma embalagem de vidro, o ideal é:",
+     ["Lavar e secar", "Quebrar em pedaços pequenos", "Embrulhar em papel jornal", "Descartar suja mesmo"], 0),
+    ("Pilhas e baterias usadas devem ir para:",
+     ["O lixo comum", "Um ponto de coleta especializado", "O vaso sanitário", "A composteira"], 1),
+    ("A compostagem é indicada principalmente para:",
+     ["Resíduo orgânico", "Vidro", "Metal", "Lixo eletrônico"], 0),
+    ("O símbolo de reciclagem em uma embalagem plástica indica:",
+     ["Que ela é biodegradável", "O tipo de resina/polímero usado", "Que não pode ser reciclada", "O peso da embalagem"], 1),
+]
+
+
+def popular_quizzes(cur, cursos_ids, aulas_por_curso):
+    """
+    Cria 1 quiz por aula (tb_quizzes.aula_id é UNIQUE), com 3 perguntas do
+    banco fixo acima.
+
+    Retorna {aula_id: {"quiz_id", "nota_minima", "perguntas": [(pergunta_id, [(alt_id, correta), ...]), ...]}}
+    """
+    quizzes_por_aula = {}
+    for titulo_curso, aula_ids in aulas_por_curso.items():
+        curso_id = cursos_ids[titulo_curso]
+        for aula_id in aula_ids:
+            cur.execute(
+                "SELECT id_quiz, nota_minima_aprovacao FROM tb_quizzes WHERE aula_id = %s",
+                (aula_id,),
+            )
+            row = cur.fetchone()
+            if row:
+                quiz_id, nota_minima = row
+            else:
+                quiz_id = fetch_id(
+                    cur,
+                    """INSERT INTO tb_quizzes
+                           (curso_id, aula_id, titulo_quiz, nota_minima_aprovacao, pontos_recompensa)
+                       VALUES (%s, %s, %s, %s, %s) RETURNING id_quiz""",
+                    (curso_id, aula_id, "Quiz de fixação", 70, 20),
+                )
+                nota_minima = 70
+
+            cur.execute(
+                "SELECT id_pergunta FROM tb_perguntas_quiz WHERE quiz_id = %s ORDER BY ordem",
+                (quiz_id,),
+            )
+            perguntas_existentes = cur.fetchall()
+
+            perguntas = []
+            if perguntas_existentes:
+                for (pergunta_id,) in perguntas_existentes:
+                    cur.execute(
+                        "SELECT id_alternativa, correta FROM tb_alternativas_quiz "
+                        "WHERE pergunta_id = %s",
+                        (pergunta_id,),
+                    )
+                    perguntas.append((pergunta_id, cur.fetchall()))
+            else:
+                escolhidas = fk.random_elements(
+                    _PERGUNTAS_MODELO, length=min(3, len(_PERGUNTAS_MODELO)), unique=True
+                )
+                for ordem, (enunciado, alternativas, idx_correta) in enumerate(escolhidas, start=1):
+                    pergunta_id = fetch_id(
+                        cur,
+                        """INSERT INTO tb_perguntas_quiz (quiz_id, enunciado, ordem)
+                           VALUES (%s, %s, %s) RETURNING id_pergunta""",
+                        (quiz_id, enunciado, ordem),
+                    )
+                    alt_ids = []
+                    for i_alt, texto in enumerate(alternativas):
+                        alt_id = fetch_id(
+                            cur,
+                            """INSERT INTO tb_alternativas_quiz
+                                   (pergunta_id, texto_alternativa, correta)
+                               VALUES (%s, %s, %s) RETURNING id_alternativa""",
+                            (pergunta_id, texto, i_alt == idx_correta),
+                        )
+                        alt_ids.append((alt_id, i_alt == idx_correta))
+                    perguntas.append((pergunta_id, alt_ids))
+
+            quizzes_por_aula[aula_id] = {
+                "quiz_id": quiz_id,
+                "nota_minima": float(nota_minima),
+                "perguntas": perguntas,
+            }
+
+    return quizzes_por_aula
+
+
 def matricular_usuario_em_aulas(cur, usuario_id, lista_aula_ids):
+    """
+    Matricula o usuário em cada aula e, para ~55% delas, marca conclusão.
+    Retorna a lista de aula_ids concluídas.
+    """
     progresso = []
     for aula_id in lista_aula_ids:
         vai_concluir = fk.boolean(55)
@@ -798,9 +834,10 @@ def matricular_usuario_em_aulas(cur, usuario_id, lista_aula_ids):
                RETURNING id_usuario_curso""",
             (usuario_id, aula_id, data_inicio),
         )
-        progresso.append((uc_id, vai_concluir, data_inicio))
+        progresso.append((uc_id, aula_id, vai_concluir, data_inicio))
 
-    for uc_id, vai_concluir, data_inicio in progresso:
+    aulas_concluidas = []
+    for uc_id, aula_id, vai_concluir, data_inicio in progresso:
         if not vai_concluir:
             continue
         data_conclusao = data_inicio + timedelta(days=rng.randint(1, 14))
@@ -810,10 +847,59 @@ def matricular_usuario_em_aulas(cur, usuario_id, lista_aula_ids):
                WHERE id_usuario_curso = %s""",
             (data_conclusao, uc_id),
         )
+        aulas_concluidas.append(aula_id)
+
+    return aulas_concluidas
+
+
+def simular_tentativa_quiz(cur, usuario_id, quiz_info, condominio_id=None, torre_id=None):
+    """
+    Simula uma tentativa completa de um quiz: responde cada pergunta
+    (acertando com ~70% de chance) e fecha com nota/aprovado calculados a
+    partir dos acertos, respeitando quiz_info["nota_minima"].
+    condominio_id/torre_id são nullable -- usuários comuns passam None.
+    """
+    iniciado_em = fk.date_time_between(120, 1)
+    tentativa_id = fetch_id(
+        cur,
+        """INSERT INTO tb_tentativas_quiz
+               (usuario_id, quiz_id, condominio_id, torre_id, iniciado_em)
+           VALUES (%s, %s, %s, %s, %s) RETURNING id_tentativa""",
+        (usuario_id, quiz_info["quiz_id"], condominio_id, torre_id, iniciado_em),
+    )
+
+    perguntas = quiz_info["perguntas"]
+    acertos = 0
+    for pergunta_id, alternativas in perguntas:
+        corretas = [aid for aid, correta in alternativas if correta]
+        erradas  = [aid for aid, correta in alternativas if not correta]
+        vai_acertar = fk.boolean(70) or not erradas
+        alt_escolhida = fk.random_element(corretas if vai_acertar else erradas)
+        acertou = alt_escolhida in corretas
+
+        cur.execute(
+            """INSERT INTO tb_rel_respostas_tentativas_quiz
+                   (tentativa_id, pergunta_id, alternativa_escolhida_id, correta)
+               VALUES (%s, %s, %s, %s)""",
+            (tentativa_id, pergunta_id, alt_escolhida, acertou),
+        )
+        if acertou:
+            acertos += 1
+
+    total = len(perguntas)
+    nota = round(100.0 * acertos / total, 2) if total else 0.0
+    aprovado = nota >= quiz_info["nota_minima"]
+    concluido_em = iniciado_em + timedelta(minutes=rng.randint(3, 25))
+    cur.execute(
+        """UPDATE tb_tentativas_quiz
+           SET nota = %s, aprovado = %s, concluido_em = %s
+           WHERE id_tentativa = %s""",
+        (nota, aprovado, concluido_em, tentativa_id),
+    )
 
 
 # ==============================================================================
-# 9. NOTIFICAÇÕES
+# 8. NOTIFICAÇÕES
 # ==============================================================================
 
 def criar_notificacoes_usuario(cur, usuario_id, qtd):
@@ -826,19 +912,15 @@ def criar_notificacoes_usuario(cur, usuario_id, qtd):
     }
     for _ in range(qtd):
         tipo       = fk.random_element(tipos)
-        foi_lida   = fk.boolean(65)
         data_envio = fk.date_time_between(120, 0)
-        data_leitura = (
-            data_envio + timedelta(hours=rng.randint(1, 48)) if foi_lida else None
-        )
         cur.execute(
             """INSERT INTO tb_notificacoes
                    (usuario_id, titulo_mensagem, corpo_mensagem,
-                    tipo_notificacao, foi_lida, data_envio, data_leitura)
-               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                    tipo_notificacao, data_envio)
+               VALUES (%s, %s, %s, %s, %s)""",
             (
                 usuario_id, titulos[tipo], fk.sentence(10),
-                tipo, foi_lida, data_envio, data_leitura,
+                tipo, data_envio,
             ),
         )
 
@@ -849,19 +931,8 @@ def criar_notificacoes_usuario(cur, usuario_id, qtd):
 
 def limpar_dados_banco(cur):
     """
-    TRUNCATE em ordem de dependência (filhos antes dos pais).
-
-    Tabelas de domínio/lookup (tb_lkp_*) são mantidas propositalmente fora
-    desta lista: são seeds fixos, populados uma única vez e reaproveitados
-    entre execuções (tb_lkp_tipos_eventos_auditados e
-    tb_lkp_tipos_operacoes_auditoria já vêm semeadas pelo próprio
-    ecociente_schema.sql).
-
-    tb_rel_votos_postagens e as tabelas de quiz (tb_quizzes,
-    tb_perguntas_quiz, tb_alternativas_quiz, tb_tentativas_quiz,
-    tb_rel_respostas_tentativas_quiz) não são geradas por este populador
-    ainda, mas entram no TRUNCATE por segurança (dependem de tb_postagens
-    / tb_aulas via FK).
+    TRUNCATE em ordem de dependência (filhos antes dos pais). Tabelas
+    tb_lkp_* ficam de fora: são seeds fixos reaproveitados entre execuções.
     """
     tabelas = [
         "tb_notificacoes",
@@ -869,12 +940,6 @@ def limpar_dados_banco(cur):
         "tb_log_auditoria_agendamentos_coletas",
         "tb_log_auditoria_usuarios_condominios",
         "tb_log_auditoria",
-        "tb_rel_votos_postagens",
-        "tb_postagens",
-        "tb_avaliacoes_visitas_coletas",
-        "tb_visitas_coletas",
-        "tb_rel_recorrencias_agendamentos",
-        "tb_agendamentos_coletas",
         "tb_rel_respostas_tentativas_quiz",
         "tb_tentativas_quiz",
         "tb_alternativas_quiz",
@@ -883,12 +948,15 @@ def limpar_dados_banco(cur):
         "tb_rel_usuarios_cursos",
         "tb_aulas",
         "tb_cursos",
-        "tb_avisos",
+        "tb_rel_votos_postagens",
+        "tb_postagens",
+        "tb_avaliacoes_visitas_coletas",
+        "tb_visitas_coletas",
+        "tb_rel_recorrencias_agendamentos",
+        "tb_agendamentos_coletas",
         "tb_rel_usuarios_condominios",
         "tb_moradores",
-        "tb_usuarios_comuns",
         "tb_sindicos",
-        "tb_unidades",
         "tb_torres",
         "tb_condominios",
         "tb_cooperativas",

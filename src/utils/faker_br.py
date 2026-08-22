@@ -97,8 +97,9 @@ class FakerBR:
         return "$2b$12$" + hashlib.sha256(email.encode()).hexdigest()[:53]
 
     def cpf(self):
-        d = [self._r().randint(0,9) for _ in range(11)]
-        return f"{d[0]}{d[1]}{d[2]}.{d[3]}{d[4]}{d[5]}.{d[6]}{d[7]}{d[8]}-{d[9]}{d[10]}"
+        """11 dígitos sem máscara -- tb_usuarios.cpf é VARCHAR(11) no schema."""
+        d = [self._r().randint(0, 9) for _ in range(11)]
+        return "".join(str(x) for x in d)
 
     def cnpj(self):
         d = [self._r().randint(0,9) for _ in range(14)]
@@ -128,24 +129,14 @@ class FakerBR:
     def secondary_address(self):
         return self._r().choice(self._complementos)
 
-    def latitude(self, base=None):
-        b = base if base else -23.55
-        return round(b + self._r().uniform(-0.12, 0.12), 6)
-
-    def longitude(self, base=None):
-        b = base if base else -46.63
-        return round(b + self._r().uniform(-0.12, 0.12), 6)
-
     def address_tuple(self):
-        """Retorna (uf, cidade, cep, logradouro, numero, lat, lng)."""
-        uf, cidade, lat_base, lng_base = self._r().choice(self._estados_cidades)
+        """Retorna (uf, cidade, cep, logradouro, numero) -- colunas de tb_enderecos."""
+        uf, cidade, _lat_base, _lng_base = self._r().choice(self._estados_cidades)
         return (
             uf, cidade,
             self.cep(),
             self.street_name(),
             self.building_number(),
-            self.latitude(lat_base),
-            self.longitude(lng_base),
         )
 
     def date_of_birth(self, min_age=18, max_age=70):
