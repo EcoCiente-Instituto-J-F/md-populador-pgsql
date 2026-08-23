@@ -311,16 +311,17 @@ def criar_usuario(cur, tipo_usuario_id, n_telefones=(1, 1)):
     avatar      = fk.url(path="avatares", ext="jpg") if fk.boolean(40) else None
     ativo       = fk.boolean(95)
     registro_em = fk.date_time_between(900, 0)
+    endereco_id = criar_endereco(cur)
 
     usuario_id = fetch_id(
         cur,
         """INSERT INTO tb_usuarios
                (nome_usuario, email_usuario, senha_hash, data_nascimento, cpf,
-                url_avatar, ativo, registro_em, tipo_usuario_id)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                url_avatar, ativo, registro_em, tipo_usuario_id, endereco_id)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            RETURNING id_usuario""",
         (nome, email, senha_hash, nascimento, cpf,
-         avatar, ativo, registro_em, tipo_usuario_id),
+         avatar, ativo, registro_em, tipo_usuario_id, endereco_id),
     )
 
     qtd_tel = rng.randint(*n_telefones)
