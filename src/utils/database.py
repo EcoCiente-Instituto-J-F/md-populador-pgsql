@@ -26,7 +26,7 @@ USUARIOS_POR_COMERCIAL      = (4, 8)
 
 PONTOS_COLETA_POR_COOPERATIVA = (2, 3)
 POSTAGENS_POR_OCUPANTE        = (0, 6)
-VOTOS_POR_POSTAGEM            = (0, 6)
+VOTOS_POR_POSTAGEM            = (5, 12)
 NOTIFICACOES_POR_USUARIO      = (2, 5)
 AGENDAMENTOS_POR_CONDOMINIO   = (1, 2)
 VISITAS_POR_AGENDAMENTO       = (2, 5)
@@ -529,10 +529,12 @@ def vincular_categorias_ponto_coleta(cur, ponto_coleta_id, categoria_ids_recicla
 # 5. POSTAGENS DE DESCARTE + MODERAÇÃO (VOTOS)
 # ==============================================================================
 
-def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem, torre_id=None):
-    # saldo_confianca nasce em 0 -- simular_votos_postagem() é quem
-    # incrementa via sp_processar_voto_postagem. status_validacao_id fica
-    # no DEFAULT (aprovada) até algum voto resolver a postagem.
+def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem,
+                    status_em_analise_id, torre_id=None):
+    # saldo_confianca nasce em 0 e status_validacao_id nasce em em_analise
+    # -- o DEFAULT da coluna é aprovada, mas toda postagem nova deve
+    # aguardar a comunidade votar (simular_votos_postagem/sp_processar_voto_postagem)
+    # antes de virar aprovada ou reprovada.
     capturada_em = data_postagem - timedelta(minutes=rng.randint(1, 30))
     hash_foto = hashlib.sha256(
         f"{usuario_id}-{condominio_id}-{categoria_id}-"
@@ -543,13 +545,13 @@ def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem, 
         cur,
         """INSERT INTO tb_postagens
                (usuario_id, condominio_id, torre_id, categoria_id, url_foto,
-                hash_foto, capturada_em, data_postagem, saldo_confianca)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                hash_foto, capturada_em, data_postagem, status_validacao_id, saldo_confianca)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            RETURNING id_postagem""",
         (
             usuario_id, condominio_id, torre_id, categoria_id,
             fk.url(path="postagens", ext="jpg"), hash_foto,
-            capturada_em, data_postagem, 0,
+            capturada_em, data_postagem, status_em_analise_id, 0,
         ),
     )
 
@@ -557,22 +559,32 @@ def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem, 
 def simular_votos_postagem(cur, postagem_id, usuario_dono_id, votantes_do_condominio,
                             motivos_denuncia_ids):
     """
-    Simula de 0 a VOTOS_POR_POSTAGEM votos via sp_processar_voto_postagem,
-    que calcula o peso do voto, atualiza saldo_confianca e resolve o
-    status da postagem ao atingir os limiares. votantes_do_condominio deve
-    conter só usuario_ids com vínculo aprovado=TRUE nesse condomínio.
+    Simula VOTOS_POR_POSTAGEM votos via sp_processar_voto_postagem, que
+    calcula o peso do voto, atualiza saldo_confianca e resolve o status da
+    postagem ao atingir os limiares (+5 aprova / -5 reprova). votantes_do_condominio
+    deve conter só usuario_ids com vínculo aprovado=TRUE nesse condomínio.
+
+    Cada postagem sorteia um veredito predominante (70% aprovar / 30%
+    denunciar) e 85% dos votos seguem esse veredito -- assim a maioria das
+    postagens resolve de forma decisiva com poucos votos discordantes, em
+    vez de ficar em_analise por saldo empatado.
     """
     candidatos = [uid for uid in votantes_do_condominio if uid != usuario_dono_id]
     if not candidatos:
         return
 
-    qtd_votos = rng.randint(0, min(len(candidatos), VOTOS_POR_POSTAGEM[1]))
+    veredito = "aprovar" if fk.boolean(70) else "denunciar"
+    contrario = "denunciar" if veredito == "aprovar" else "aprovar"
+
+    minimo = min(VOTOS_POR_POSTAGEM[0], len(candidatos))
+    maximo = min(VOTOS_POR_POSTAGEM[1], len(candidatos))
+    qtd_votos = rng.randint(minimo, maximo)
     if qtd_votos == 0:
         return
 
     votantes = fk.random_elements(candidatos, length=qtd_votos, unique=True)
     for usuario_id in votantes:
-        tipo_voto = "aprovar" if fk.boolean(75) else "denunciar"
+        tipo_voto = veredito if fk.boolean(85) else contrario
         motivo_id = fk.random_element(motivos_denuncia_ids) if tipo_voto == "denunciar" else None
         comentario = fk.sentence(6) if fk.boolean(30) else None
         try:
