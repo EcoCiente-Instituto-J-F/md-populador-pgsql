@@ -101,7 +101,8 @@ def main():
         categorias_reciclaveis = [cid for nome, cid in categorias.items() if nome != "Rejeito"]
 
         popular_niveis_confianca(cur)
-        popular_status_validacoes_postagens(cur)
+        status_validacoes = popular_status_validacoes_postagens(cur)
+        status_em_analise_id = status_validacoes["em_analise"]
         popular_tipos_votos_postagens(cur)
         motivos_denuncia = popular_motivos_denuncia(cur)
         motivos_denuncia_ids = list(motivos_denuncia.values())
@@ -205,7 +206,8 @@ def main():
                 data_postagem = fk.date_time_between(90, 0)
                 postagem_id = criar_postagem(
                     cur, ocupante["usuario_id"], ocupante["condominio_id"],
-                    categoria_id, data_postagem, torre_id=ocupante.get("torre_id"),
+                    categoria_id, data_postagem, status_em_analise_id,
+                    torre_id=ocupante.get("torre_id"),
                 )
                 simular_votos_postagem(
                     cur, postagem_id, ocupante["usuario_id"],
