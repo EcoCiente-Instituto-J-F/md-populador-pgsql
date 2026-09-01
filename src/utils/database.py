@@ -942,6 +942,23 @@ def criar_notificacoes_usuario(cur, usuario_id, qtd):
 # ATOMICIDADE / LIMPEZA
 # ==============================================================================
 
+
+def criar_autenticacao_api(cur, usuario_id, token=None):
+    """
+    Cria token de autenticação para um usuário existente.
+    Relacionamento: tb_autenticacoes_api -> tb_usuarios.
+    """
+    token = token or f"ecociente-{hashlib.sha256(str(usuario_id).encode()).hexdigest()}"
+    fetch_id(
+        cur,
+        """INSERT INTO tb_autenticacoes_api
+               (usuario_id, token, tipo_token, expira_em)
+           VALUES (%s, %s, %s, %s)
+           RETURNING id_autenticao_api""",
+        (usuario_id, token, "Bearer", 86400),
+    )
+
+
 def popular_movimentacoes_pontos(cur):
     """
     Alimenta o ledger oficial de pontos.

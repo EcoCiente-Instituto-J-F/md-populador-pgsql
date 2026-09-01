@@ -1,11 +1,53 @@
 """
 main.py
+================================================================================
+EcoCiente - Massa de Dados (Carga Inicial)
+================================================================================
+Popula o schema PostgreSQL do EcoCiente (modelagem lógica atual, implementada
+em ecociente_schema.sql) com dados fictícios em pt_BR, usando a classe
+FakerBR (faker_br.py), através das funções de utils/database.py.
 
-Carga inicial de massa de dados do EcoCiente. Popula o schema PostgreSQL
-(ecociente_schema_ajustado.sql) com dados fictícios em pt_BR via FakerBR
-(faker_br.py) e as funções de utils/database.py.
+PRÉ-REQUISITO (rodar antes deste script):
+    ecociente_schema.sql — DDL de todas as tabelas do DBML, FKs, CHECKs,
+    as functions fn_pontos_disponiveis_postagem / fn_calcular_trust_score,
+    as procedures sp_processar_voto_postagem / sp_atualizar_trust_score, e
+    as triggers de auditoria (tb_postagens / tb_agendamentos_coletas /
+    tb_rel_usuarios_condominios).
 
-Pré-requisito: rodar ecociente_schema_ajustado.sql antes.
+    O schema atual NÃO tem mais sp_confirmar_passagem_cooperativa nem
+    trigger de recorrência automática — este script reflete isso:
+    confirmar_visita() faz UPDATE direto, e possui_recorrencia é setado no
+    próprio INSERT de tb_agendamentos_coletas.
+
+A conexão é obtida via utils.helpers.get_connection(), que já devolve a
+conexão em autocommit=True. Isso simplifica o tratamento de erro: cada
+INSERT/UPDATE já fica persistido imediatamente, sem depender de um COMMIT
+manual ao final do script — por isso, em caso de exceção, o bloco de
+tratamento chama limpar_dados_banco(cur) para descartar o que já tiver sido
+gravado nesta execução.
+
+Colunas de moderação/confiança que o schema atual exige (NOT NULL sem
+default) e que este script preenche:
+    - tb_rel_usuarios_condominios: trust_score (calculado via
+      fn_calcular_trust_score do próprio banco), postagens_validadas_sem_
+      contestacao, denuncias_realizadas, denuncias_procedentes.
+    - tb_postagens: hash_foto (único), capturada_em, saldo_confianca.
+
+Lookups de moderação semeados por este script (não vêm prontos no DDL):
+    tb_lkp_niveis_confianca, tb_lkp_status_validacoes_postagens,
+    tb_lkp_tipos_votos_postagens, tb_lkp_motivos_denuncia.
+    (tb_lkp_tipos_eventos_auditados e tb_lkp_tipos_operacoes_auditoria já
+    vêm semeadas pelo próprio ecociente_schema.sql — não precisam ser
+    populadas aqui.)
+
+    - Síndicos: criar_usuario → criar_subtipo_sindico → retorna id_sindico
+      (usado como FK em tb_condominios.sindico_id, não o usuario_id direto).
+    - Usuários Comuns: criar_usuario → criar_subtipo_usuario_comum.
+    - criar_condominio recebe sindico_id (tb_sindicos.id_sindico), não o
+      usuario_id direto.
+    - criar_cooperativa não recebe nome externo; retorna (cooperativa_id, nome).
+    - tb_unidades.condominio_id é NOT NULL sempre — mesmo unidades ligadas
+      a uma torre (torre_id) também precisam do condominio_id preenchido.
 
 Instalação:
     pip install psycopg2-binary --break-system-packages
@@ -15,10 +57,10 @@ Uso:
     (configure utils.helpers.DB_CONFIG ou exporte ECOCIENTE_DSN /
      ECOCIENTE_DB_HOST / ECOCIENTE_DB_PORT / ECOCIENTE_DB_NAME /
      ECOCIENTE_DB_USER / ECOCIENTE_DB_PASSWORD / ECOCIENTE_DB_SSLMODE)
+================================================================================
 """
 
 import sys
-from collections import defaultdict
 
 from utils.helpers import get_connection
 
@@ -30,22 +72,30 @@ except ImportError:
     sys.exit(1)
 
 from utils.database import (
+    # config / volumetria (fonte única: utils/database.py, evita duplicação
+    # e divergência de constantes entre os dois módulos)
+    SEED,
     N_CONDOMINIOS_RESIDENCIAL,
     N_CONDOMINIOS_COMERCIAL,
     N_COOPERATIVAS,
     N_USUARIOS_COMUM,
     TORRES_POR_RESIDENCIAL,
-    MORADORES_POR_TORRE,
-    USUARIOS_POR_COMERCIAL,
+    UNIDADES_POR_TORRE,
+    UNIDADES_POR_COMERCIAL,
+    CHANCE_UNIDADE_OCUPADA,
     PONTOS_COLETA_POR_COOPERATIVA,
     POSTAGENS_POR_OCUPANTE,
     NOTIFICACOES_POR_USUARIO,
     AGENDAMENTOS_POR_CONDOMINIO,
     VISITAS_POR_AGENDAMENTO,
+    # instâncias compartilhadas de FakerBR/Random (mesmo SEED, um único
+    # stream de aleatoriedade entre database.py e main.py)
     fk,
     rng,
+    # funções de geração de massa
     popular_tipos_usuarios,
     popular_tipos_condominios,
+    popular_tipos_avisos,
     popular_dias_semana,
     popular_categorias_residuos,
     popular_status_agendamentos,
@@ -55,28 +105,26 @@ from utils.database import (
     popular_motivos_denuncia,
     criar_usuario,
     criar_subtipo_sindico,
+    criar_subtipo_usuario_comum,
     criar_condominio,
     criar_torre,
+    criar_unidade,
     criar_morador,
     criar_vinculo_condominio,
-    recalcular_trust_scores,
+    criar_aviso,
     criar_cooperativa,
     criar_ponto_coleta,
     vincular_categorias_cooperativa,
     vincular_categorias_ponto_coleta,
     popular_cursos_e_aulas,
-    popular_quizzes,
     criar_postagem,
-    simular_votos_postagem,
     criar_agendamento,
     criar_recorrencia,
     criar_visita,
     confirmar_visita,
     criar_avaliacao_visita,
     matricular_usuario_em_aulas,
-    simular_tentativa_quiz,
     criar_notificacoes_usuario,
-    popular_movimentacoes_pontos,
     limpar_dados_banco,
 )
 
@@ -96,26 +144,29 @@ def main():
     try:
         tipos_usuario = popular_tipos_usuarios(cur)
         tipos_condominio = popular_tipos_condominios(cur)
+        tipos_aviso = popular_tipos_avisos(cur)
         dias_semana = popular_dias_semana(cur)
         status_agendamento = popular_status_agendamentos(cur)
         categorias = popular_categorias_residuos(cur)
         categorias_reciclaveis = [cid for nome, cid in categorias.items() if nome != "Rejeito"]
 
+        # Lookups de moderação/confiança — precisam existir ANTES de
+        # qualquer INSERT em tb_rel_usuarios_condominios/tb_postagens, pois
+        # ambas dependem do id 1 (morador_comum / aprovada) via DEFAULT ou
+        # FK explícita.
         popular_niveis_confianca(cur)
-        status_validacoes = popular_status_validacoes_postagens(cur)
-        status_em_analise_id = status_validacoes["em_analise"]
+        popular_status_validacoes_postagens(cur)
         popular_tipos_votos_postagens(cur)
-        motivos_denuncia = popular_motivos_denuncia(cur)
-        motivos_denuncia_ids = list(motivos_denuncia.values())
+        popular_motivos_denuncia(cur)
 
-        print("[2/9] Cursos, aulas e quizzes...")
+        print("[2/9] Cursos e aulas (apenas os 2 cursos do domínio)...")
         cursos_ids, aulas_por_curso = popular_cursos_e_aulas(cur)
-        quizzes_por_aula = popular_quizzes(cur, cursos_ids, aulas_por_curso)
 
         print("[3/9] Usuários comuns...")
         usuarios_comuns = []
         for _ in range(N_USUARIOS_COMUM):
             uid, _ = criar_usuario(cur, tipos_usuario["Usuário Comum"])
+            criar_subtipo_usuario_comum(cur, uid)
             usuarios_comuns.append(uid)
 
         print("[4/9] Cooperativas + pontos de coleta...")
@@ -129,10 +180,10 @@ def main():
                 vincular_categorias_ponto_coleta(cur, ponto_id, categorias_reciclaveis)
             cooperativas.append((coop_id, coop_nome, u_coop))
 
-        ocupantes = []  # dicts com usuario_id, condominio_id, torre_id, morador_id, sindico_id etc.
-        votantes_por_condominio = defaultdict(list)  # usuario_ids com vínculo aprovado, por condomínio
-
-        print("[5/9] Condomínios residenciais + torres + moradores...")
+        print("[5/9] Condomínios residenciais + torres + unidades + moradores...")
+        # ocupantes: lista de dicts com usuario_id, condominio_id, morador_id,
+        # sindico_usuario_id (usuarios.id_usuario) e sindico_id (sindicos.id_sindico)
+        ocupantes = []
         condominios_residenciais = []
         for i in range(N_CONDOMINIOS_RESIDENCIAL):
             sindico_usuario_id, sindico_nome = criar_usuario(cur, tipos_usuario["Síndico Residencial"])
@@ -146,24 +197,33 @@ def main():
 
             for t in range(rng.randint(*TORRES_POR_RESIDENCIAL)):
                 torre_id = criar_torre(cur, condominio_id, f"Torre {chr(65 + t)}")
-                for _ in range(rng.randint(*MORADORES_POR_TORRE)):
-                    uid, _ = criar_usuario(cur, tipos_usuario["Morador Residencial"])
-                    morador_id = criar_morador(cur, uid, condominio_id)
-                    _, aprovado = criar_vinculo_condominio(
-                        cur, uid, condominio_id, aprovado_por_usuario_id=sindico_usuario_id
+                for u in range(rng.randint(*UNIDADES_POR_TORRE)):
+                    numero = f"{rng.randint(1, 20)}{str(u + 1).zfill(2)}"
+                    # tb_unidades.condominio_id é NOT NULL sempre: mesmo
+                    # unidade vinculada a uma torre precisa do condominio_id.
+                    unidade_id = criar_unidade(
+                        cur, numero, "residencial",
+                        torre_id=torre_id, condominio_id=condominio_id,
                     )
-                    if aprovado:
-                        votantes_por_condominio[condominio_id].append(uid)
-                    ocupantes.append({
-                        "usuario_id": uid,
-                        "condominio_id": condominio_id,
-                        "torre_id": torre_id,
-                        "morador_id": morador_id,
-                        "sindico_usuario_id": sindico_usuario_id,
-                        "sindico_id": sindico_id,
-                    })
+                    if fk.boolean(CHANCE_UNIDADE_OCUPADA):
+                        tipo_ocupante = tipos_usuario["Morador Residencial"]
+                        uid, _ = criar_usuario(cur, tipo_ocupante)
+                        morador_id = criar_morador(cur, uid, unidade_id)
+                        criar_vinculo_condominio(cur, uid, condominio_id, aprovado_por_usuario_id=sindico_usuario_id)
+                        ocupantes.append({
+                            "usuario_id": uid,
+                            "condominio_id": condominio_id,
+                            "torre_id": torre_id,
+                            "morador_id": morador_id,
+                            "sindico_usuario_id": sindico_usuario_id,
+                            "sindico_id": sindico_id,
+                        })
 
-        print("[6/9] Condomínios comerciais + moradores/usuários comerciais...")
+            # avisos do síndico: criado_por_usuario_id aponta para tb_usuarios diretamente
+            for _ in range(rng.randint(2, 5)):
+                criar_aviso(cur, condominio_id, sindico_usuario_id, fk.random_element(list(tipos_aviso.values())))
+
+        print("[6/9] Condomínios comerciais + unidades + usuários comerciais...")
         condominios_comerciais = []
 
         for i in range(N_CONDOMINIOS_COMERCIAL):
@@ -176,49 +236,46 @@ def main():
             )
             condominios_comerciais.append(condominio_id)
 
-            for _ in range(rng.randint(*USUARIOS_POR_COMERCIAL)):
-                uid, _ = criar_usuario(cur, tipos_usuario["Usuário Comercial"])
-                morador_id = criar_morador(cur, uid, condominio_id)
-                _, aprovado = criar_vinculo_condominio(
-                    cur, uid, condominio_id, aprovado_por_usuario_id=sindico_usuario_id
-                )
-                if aprovado:
-                    votantes_por_condominio[condominio_id].append(uid)
-                ocupantes.append({
-                    "usuario_id": uid,
-                    "condominio_id": condominio_id,
-                    "torre_id": None,
-                    "morador_id": morador_id,
-                    "sindico_usuario_id": sindico_usuario_id,
-                    "sindico_id": sindico_id,
-                })
+            for u in range(rng.randint(*UNIDADES_POR_COMERCIAL)):
+                numero = f"Sala {100 + u}"
+                unidade_id = criar_unidade(cur, numero, "comercial", condominio_id=condominio_id)
+                if fk.boolean(CHANCE_UNIDADE_OCUPADA):
+                    uid, _ = criar_usuario(cur, tipos_usuario["Usuário Comercial"])
+                    morador_id = criar_morador(cur, uid, unidade_id)
+                    criar_vinculo_condominio(cur, uid, condominio_id, aprovado_por_usuario_id=sindico_usuario_id)
+                    ocupantes.append({
+                        "usuario_id": uid,
+                        "condominio_id": condominio_id,
+                        "torre_id": None,
+                        "morador_id": morador_id,
+                        "sindico_usuario_id": sindico_usuario_id,
+                        "sindico_id": sindico_id,
+                    })
+
+            for _ in range(rng.randint(1, 3)):
+                criar_aviso(cur, condominio_id, sindico_usuario_id, fk.random_element(list(tipos_aviso.values())))
 
         todos_condominios = condominios_residenciais + condominios_comerciais
-        ocupante_por_usuario = {o["usuario_id"]: o for o in ocupantes}
 
         print(f"      -> {len(ocupantes)} ocupantes (moradores/usuários comerciais) gerados.")
 
-        print("[7/9] Postagens de descarte + votos de moderação...")
+        print("[7/9] Postagens de descarte...")
+        # Todo INSERT dispara trg_auditoria_postagens, que grava automaticamente
+        # em tb_log_auditoria + tb_log_auditoria_postagens.
         qtd_postagens = 0
         for ocupante in ocupantes:
-            votantes_condominio = votantes_por_condominio.get(ocupante["condominio_id"], [])
             for _ in range(rng.randint(*POSTAGENS_POR_OCUPANTE)):
                 categoria_id = fk.random_element(categorias_reciclaveis)
                 data_postagem = fk.date_time_between(90, 0)
-                postagem_id = criar_postagem(
+                criar_postagem(
                     cur, ocupante["usuario_id"], ocupante["condominio_id"],
-                    categoria_id, data_postagem, status_em_analise_id,
-                    torre_id=ocupante.get("torre_id"),
-                )
-                simular_votos_postagem(
-                    cur, postagem_id, ocupante["usuario_id"],
-                    votantes_condominio, motivos_denuncia_ids,
+                    categoria_id, data_postagem, torre_id=ocupante.get("torre_id"),
                 )
                 qtd_postagens += 1
 
         print(f"      -> {qtd_postagens} postagens criadas.")
 
-        print("[8/9] Agendamentos, recorrências, visitas, avaliações e trust score...")
+        print("[8/9] Agendamentos, recorrências, visitas e avaliações...")
         qtd_visitas_confirmadas = qtd_visitas_recusadas = qtd_visitas_futuras = 0
         qtd_avaliacoes = 0
         for condominio_id in todos_condominios:
@@ -247,6 +304,7 @@ def main():
                             qtd_visitas_recusadas += 1
 
                         if fk.boolean(70):
+                            # avaliador é o síndico como usuário (tb_usuarios.id_usuario)
                             sindico_da_visita = next(
                                 (o["sindico_usuario_id"] for o in ocupantes if o["condominio_id"] == condominio_id), None
                             )
@@ -254,42 +312,17 @@ def main():
                                 criar_avaliacao_visita(cur, visita_id, sindico_da_visita)
                                 qtd_avaliacoes += 1
                     else:
-                        qtd_visitas_futuras += 1
+                        qtd_visitas_futuras += 1  # fica com houve_confirmacao = FALSE (pendente)
 
         print(f"      -> visitas: {qtd_visitas_confirmadas} confirmadas | {qtd_visitas_recusadas} recusadas | "
             f"{qtd_visitas_futuras} futuras (pendentes) | {qtd_avaliacoes} avaliações")
 
-        recalcular_trust_scores(cur)
-        print("      -> trust_score recalculado via sp_atualizar_trust_score para todos os vínculos.")
-
-        print("[9/9] Matrículas em cursos, tentativas de quiz, autenticações e notificações...")
+        print("[9/9] Matrículas em cursos e notificações...")
         todos_usuarios_ensino = usuarios_comuns + [o["usuario_id"] for o in ocupantes]
         for usuario_id in todos_usuarios_ensino:
-            ocupante = ocupante_por_usuario.get(usuario_id)
-            condominio_id = ocupante["condominio_id"] if ocupante else None
-            torre_id = ocupante["torre_id"] if ocupante else None
-
             cursos_escolhidos = fk.random_elements(list(aulas_por_curso.keys()), length=rng.randint(1, 2), unique=True)
             for titulo_curso in cursos_escolhidos:
-                aulas_concluidas = matricular_usuario_em_aulas(cur, usuario_id, aulas_por_curso[titulo_curso])
-                for aula_id in aulas_concluidas:
-                    if fk.boolean(70):
-                        simular_tentativa_quiz(
-                            cur, usuario_id, quizzes_por_aula[aula_id],
-                            condominio_id=condominio_id, torre_id=torre_id,
-                        )
-
-        print("[9.1/9] Criando tokens de autenticação API...")
-        todos_usuarios_token = set(
-            usuarios_comuns
-            + [o["usuario_id"] for o in ocupantes]
-            + [o["sindico_usuario_id"] for o in ocupantes]
-            + [c[2] for c in cooperativas]
-        )
-      
-        print("[9.2/9] Alimentando ledger de pontos...")
-        qtd_movimentacoes = popular_movimentacoes_pontos(cur)
-        print(f"      -> {qtd_movimentacoes} movimentações de pontos criadas.")
+                matricular_usuario_em_aulas(cur, usuario_id, aulas_por_curso[titulo_curso])
 
         todos_usuarios_para_notificar = set(
             usuarios_comuns
@@ -305,21 +338,20 @@ def main():
         print("=" * 78)
         tabelas = [
             "tb_lkp_tipos_usuarios", "tb_usuarios", "tb_telefones", "tb_notificacoes",
-            "tb_lkp_tipos_condominios", "tb_condominios", "tb_sindicos",
-            "tb_moradores", "tb_torres",
+            "tb_lkp_tipos_condominios", "tb_condominios", "tb_sindicos", "tb_usuarios_comuns",
+            "tb_moradores", "tb_torres", "tb_unidades",
             "tb_enderecos", "tb_rel_usuarios_condominios", "tb_pontos_coletas", "tb_cooperativas",
             "tb_lkp_categorias_residuos", "tb_rel_cooperativas_categorias_materiais",
             "tb_rel_pontos_coletas_categorias",
             "tb_lkp_niveis_confianca", "tb_lkp_status_validacoes_postagens",
             "tb_lkp_tipos_votos_postagens", "tb_lkp_motivos_denuncia",
             "tb_postagens", "tb_rel_votos_postagens",
-            "tb_lkp_status_agendamentos",
+            "tb_lkp_tipos_avisos", "tb_avisos", "tb_lkp_status_agendamentos",
             "tb_agendamentos_coletas", "tb_visitas_coletas", "tb_avaliacoes_visitas_coletas",
             "tb_lkp_dias_semanas", "tb_rel_recorrencias_agendamentos", "tb_cursos", "tb_aulas",
             "tb_quizzes", "tb_perguntas_quiz", "tb_alternativas_quiz",
             "tb_tentativas_quiz", "tb_rel_respostas_tentativas_quiz",
             "tb_rel_usuarios_cursos",
-            "tb_autenticacoes_api", "tb_movimentacoes_pontos",
             "tb_lkp_tipos_eventos_auditados", "tb_lkp_tipos_operacoes_auditoria", "tb_log_auditoria",
             "tb_log_auditoria_postagens", "tb_log_auditoria_agendamentos_coletas",
             "tb_log_auditoria_usuarios_condominios",
@@ -331,9 +363,9 @@ def main():
         print("\nObs.: tb_log_auditoria foi populada 100% automaticamente pelas triggers")
         print("(trg_auditoria_postagens / trg_auditoria_agendamentos_coletas / trg_auditoria_usuarios_condominios)")
         print("a cada INSERT/UPDATE feito neste script -- nenhuma linha foi inserida nela manualmente.")
-        print("\nObs.: tb_rel_votos_postagens foi populada via sp_processar_voto_postagem, e o")
-        print("trust_score final de tb_rel_usuarios_condominios via sp_atualizar_trust_score --")
-        print("ambas as procedures do próprio banco, não recálculo em Python.")
+        print("\nObs.: tb_rel_votos_postagens e as tabelas de quiz (tb_quizzes/tb_perguntas_quiz/")
+        print("tb_alternativas_quiz/tb_tentativas_quiz/tb_rel_respostas_tentativas_quiz) ainda não")
+        print("são geradas por este populador -- por isso aparecem com 0 linhas acima.")
     except Exception as e:
         print("\n[ERRO]", e)
         # Se a conexão/cursor morreu no meio do erro original (ex.: o
@@ -366,7 +398,7 @@ def main():
         try:
             conn.close()
         except Exception:
-            pass
+            pass 
 
 
 if __name__ == "__main__":
