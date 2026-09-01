@@ -15,18 +15,18 @@ from .faker_br import FakerBR
 
 SEED = 42  # fixo → massa reprodutível. Use None para variar a cada run.
 
-N_CONDOMINIOS_RESIDENCIAL   = 4
-N_CONDOMINIOS_COMERCIAL     = 2
-N_COOPERATIVAS              = 3
-N_USUARIOS_COMUM            = 12
+N_CONDOMINIOS_RESIDENCIAL   = 25
+N_CONDOMINIOS_COMERCIAL     = 8
+N_COOPERATIVAS              = 10
+N_USUARIOS_COMUM            = 120
 
-TORRES_POR_RESIDENCIAL      = (2, 3)
-MORADORES_POR_TORRE         = (2, 5)
-USUARIOS_POR_COMERCIAL      = (4, 8)
+TORRES_POR_RESIDENCIAL      = (2, 8)
+MORADORES_POR_TORRE         = (4, 10)
+USUARIOS_POR_COMERCIAL      = (5, 15)
 
 PONTOS_COLETA_POR_COOPERATIVA = (2, 3)
-POSTAGENS_POR_OCUPANTE        = (0, 6)
-VOTOS_POR_POSTAGEM            = (5, 12)
+POSTAGENS_POR_OCUPANTE        = (1, 4)
+VOTOS_POR_POSTAGEM            = (5, 15)
 NOTIFICACOES_POR_USUARIO      = (2, 5)
 AGENDAMENTOS_POR_CONDOMINIO   = (1, 2)
 VISITAS_POR_AGENDAMENTO       = (2, 5)
@@ -309,7 +309,7 @@ def criar_usuario(cur, tipo_usuario_id, n_telefones=(1, 1)):
     nascimento  = fk.date_of_birth(18, 75)
     cpf         = fk.cpf()
     avatar      = fk.url(path="avatares", ext="jpg") if fk.boolean(40) else None
-    ativo       = fk.boolean(95)
+    ativo       = fk.boolean(70)
     registro_em = fk.date_time_between(900, 0)
     endereco_id = criar_endereco(cur)
 
@@ -368,7 +368,7 @@ def criar_condominio(cur, tipo_condominio_id, sindico_id, nome_fantasia, comerci
     endereco_id  = criar_endereco(cur)
     cnpj         = fk.cnpj() if comercial else (fk.cnpj() if fk.boolean(20) else None)
     codigo_acesso = proximo_codigo_acesso()
-    ativo        = fk.boolean(95)
+    ativo        = fk.boolean(80)
 
     return fetch_id(
         cur,
@@ -942,133 +942,12 @@ def criar_notificacoes_usuario(cur, usuario_id, qtd):
 # ATOMICIDADE / LIMPEZA
 # ==============================================================================
 
-
-def criar_autenticacao_api(cur, usuario_id, token=None):
-    """
-    Cria token de autenticação para um usuário existente.
-    Relacionamento: tb_autenticacoes_api -> tb_usuarios.
-    """
-    token = token or f"ecociente-{hashlib.sha256(str(usuario_id).encode()).hexdigest()}"
-    fetch_id(
-        cur,
-        """INSERT INTO tb_autenticacoes_api
-               (usuario_id, token, tipo_token, expira_em)
-           VALUES (%s, %s, %s, %s)
-           RETURNING id_autenticao_api""",
-        (usuario_id, token, "Bearer", 86400),
-    )
-
-
-def popular_movimentacoes_pontos(cur):
-    """
-    Alimenta o ledger oficial de pontos.
-
-    Cada postagem aprovada pela carga recebe um crédito de pontos.
-    Também cria créditos provenientes de quizzes aprovados quando existirem.
-    """
-    qtd = 0
-
-    cur.execute(
-        """
-        SELECT p.id_postagem, p.usuario_id, p.condominio_id, p.categoria_id
-          FROM tb_postagens p
-         WHERE NOT EXISTS (
-             SELECT 1
-               FROM tb_movimentacoes_pontos mp
-              WHERE mp.postagem_id = p.id_postagem
-                AND mp.tipo_movimentacao = 'CREDITO'
-         )
-        """
-    )
-    postagens = cur.fetchall()
-
-    for postagem_id, usuario_id, condominio_id, categoria_id in postagens:
-        pontos = 10
-        cur.execute(
-            """
-            SELECT pontos_base
-              FROM tb_lkp_categorias_residuos
-             WHERE id_categoria = %s
-            """,
-            (categoria_id,),
-        )
-        row = cur.fetchone()
-        if row:
-            pontos = row[0]
-
-        cur.execute(
-            """
-            INSERT INTO tb_movimentacoes_pontos
-                (usuario_id, condominio_id, categoria_id, origem_tipo,
-                 postagem_id, tipo_movimentacao, pontos, idempotency_key)
-            VALUES (%s,%s,%s,'POSTAGEM',%s,'CREDITO',%s,%s)
-            """,
-            (
-                usuario_id,
-                condominio_id,
-                categoria_id,
-                postagem_id,
-                pontos,
-                f"seed-postagem-{postagem_id}",
-            ),
-        )
-        qtd += 1
-
-    cur.execute(
-        """
-        SELECT tq.id_tentativa, tq.usuario_id, tq.condominio_id
-          FROM tb_tentativas_quiz tq
-         WHERE tq.aprovado = TRUE
-           AND NOT EXISTS (
-                SELECT 1
-                  FROM tb_movimentacoes_pontos mp
-                 WHERE mp.tentativa_quiz_id = tq.id_tentativa
-                   AND mp.tipo_movimentacao = 'CREDITO'
-           )
-        """
-    )
-
-    for tentativa_id, usuario_id, condominio_id in cur.fetchall():
-        cur.execute(
-            """
-            SELECT pontos_recompensa
-              FROM tb_quizzes q
-              JOIN tb_tentativas_quiz tq ON tq.quiz_id = q.id_quiz
-             WHERE tq.id_tentativa = %s
-            """,
-            (tentativa_id,),
-        )
-        row = cur.fetchone()
-        pontos = row[0] if row else 50
-
-        cur.execute(
-            """
-            INSERT INTO tb_movimentacoes_pontos
-                (usuario_id, condominio_id, origem_tipo,
-                 tentativa_quiz_id, tipo_movimentacao, pontos,
-                 idempotency_key)
-            VALUES (%s,%s,'QUIZ',%s,'CREDITO',%s,%s)
-            """,
-            (
-                usuario_id,
-                condominio_id,
-                tentativa_id,
-                pontos,
-                f"seed-quiz-{tentativa_id}",
-            ),
-        )
-        qtd += 1
-
-    return qtd
-
 def limpar_dados_banco(cur):
     """
     TRUNCATE em ordem de dependência (filhos antes dos pais). Tabelas
     tb_lkp_* ficam de fora: são seeds fixos reaproveitados entre execuções.
     """
     tabelas = [
-        "tb_autenticacoes_api",
-        "tb_movimentacoes_pontos",
         "tb_notificacoes",
         "tb_log_auditoria_postagens",
         "tb_log_auditoria_agendamentos_coletas",
