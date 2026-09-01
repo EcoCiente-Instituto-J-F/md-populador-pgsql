@@ -942,12 +942,116 @@ def criar_notificacoes_usuario(cur, usuario_id, qtd):
 # ATOMICIDADE / LIMPEZA
 # ==============================================================================
 
+def popular_movimentacoes_pontos(cur):
+    """
+    Alimenta o ledger oficial de pontos.
+
+    Cada postagem aprovada pela carga recebe um crédito de pontos.
+    Também cria créditos provenientes de quizzes aprovados quando existirem.
+    """
+    qtd = 0
+
+    cur.execute(
+        """
+        SELECT p.id_postagem, p.usuario_id, p.condominio_id, p.categoria_id
+          FROM tb_postagens p
+         WHERE NOT EXISTS (
+             SELECT 1
+               FROM tb_movimentacoes_pontos mp
+              WHERE mp.postagem_id = p.id_postagem
+                AND mp.tipo_movimentacao = 'CREDITO'
+         )
+        """
+    )
+    postagens = cur.fetchall()
+
+    for postagem_id, usuario_id, condominio_id, categoria_id in postagens:
+        pontos = 10
+        cur.execute(
+            """
+            SELECT pontos_base
+              FROM tb_lkp_categorias_residuos
+             WHERE id_categoria = %s
+            """,
+            (categoria_id,),
+        )
+        row = cur.fetchone()
+        if row:
+            pontos = row[0]
+
+        cur.execute(
+            """
+            INSERT INTO tb_movimentacoes_pontos
+                (usuario_id, condominio_id, categoria_id, origem_tipo,
+                 postagem_id, tipo_movimentacao, pontos, idempotency_key)
+            VALUES (%s,%s,%s,'POSTAGEM',%s,'CREDITO',%s,%s)
+            """,
+            (
+                usuario_id,
+                condominio_id,
+                categoria_id,
+                postagem_id,
+                pontos,
+                f"seed-postagem-{postagem_id}",
+            ),
+        )
+        qtd += 1
+
+    cur.execute(
+        """
+        SELECT tq.id_tentativa, tq.usuario_id, tq.condominio_id
+          FROM tb_tentativas_quiz tq
+         WHERE tq.aprovado = TRUE
+           AND NOT EXISTS (
+                SELECT 1
+                  FROM tb_movimentacoes_pontos mp
+                 WHERE mp.tentativa_quiz_id = tq.id_tentativa
+                   AND mp.tipo_movimentacao = 'CREDITO'
+           )
+        """
+    )
+
+    for tentativa_id, usuario_id, condominio_id in cur.fetchall():
+        cur.execute(
+            """
+            SELECT pontos_recompensa
+              FROM tb_quizzes q
+              JOIN tb_tentativas_quiz tq ON tq.quiz_id = q.id_quiz
+             WHERE tq.id_tentativa = %s
+            """,
+            (tentativa_id,),
+        )
+        row = cur.fetchone()
+        pontos = row[0] if row else 50
+
+        cur.execute(
+            """
+            INSERT INTO tb_movimentacoes_pontos
+                (usuario_id, condominio_id, origem_tipo,
+                 tentativa_quiz_id, tipo_movimentacao, pontos,
+                 idempotency_key)
+            VALUES (%s,%s,'QUIZ',%s,'CREDITO',%s,%s)
+            """,
+            (
+                usuario_id,
+                condominio_id,
+                tentativa_id,
+                pontos,
+                f"seed-quiz-{tentativa_id}",
+            ),
+        )
+        qtd += 1
+
+    return qtd
+
 def limpar_dados_banco(cur):
     """
     TRUNCATE em ordem de dependência (filhos antes dos pais). Tabelas
     tb_lkp_* ficam de fora: são seeds fixos reaproveitados entre execuções.
     """
     tabelas = [
+        "tb_autenticacoes_api",
+        "tb_movimentacoes_pontos",
         "tb_notificacoes",
         "tb_log_auditoria_postagens",
         "tb_log_auditoria_agendamentos_coletas",
