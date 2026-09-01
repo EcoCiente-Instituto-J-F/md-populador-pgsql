@@ -76,6 +76,7 @@ from utils.database import (
     matricular_usuario_em_aulas,
     simular_tentativa_quiz,
     criar_notificacoes_usuario,
+    popular_movimentacoes_pontos,
     limpar_dados_banco,
 )
 
@@ -261,7 +262,7 @@ def main():
         recalcular_trust_scores(cur)
         print("      -> trust_score recalculado via sp_atualizar_trust_score para todos os vínculos.")
 
-        print("[9/9] Matrículas em cursos, tentativas de quiz e notificações...")
+        print("[9/9] Matrículas em cursos, tentativas de quiz, autenticações e notificações...")
         todos_usuarios_ensino = usuarios_comuns + [o["usuario_id"] for o in ocupantes]
         for usuario_id in todos_usuarios_ensino:
             ocupante = ocupante_por_usuario.get(usuario_id)
@@ -277,6 +278,18 @@ def main():
                             cur, usuario_id, quizzes_por_aula[aula_id],
                             condominio_id=condominio_id, torre_id=torre_id,
                         )
+
+        print("[9.1/9] Criando tokens de autenticação API...")
+        todos_usuarios_token = set(
+            usuarios_comuns
+            + [o["usuario_id"] for o in ocupantes]
+            + [o["sindico_usuario_id"] for o in ocupantes]
+            + [c[2] for c in cooperativas]
+        )
+      
+        print("[9.2/9] Alimentando ledger de pontos...")
+        qtd_movimentacoes = popular_movimentacoes_pontos(cur)
+        print(f"      -> {qtd_movimentacoes} movimentações de pontos criadas.")
 
         todos_usuarios_para_notificar = set(
             usuarios_comuns
@@ -306,6 +319,7 @@ def main():
             "tb_quizzes", "tb_perguntas_quiz", "tb_alternativas_quiz",
             "tb_tentativas_quiz", "tb_rel_respostas_tentativas_quiz",
             "tb_rel_usuarios_cursos",
+            "tb_autenticacoes_api", "tb_movimentacoes_pontos",
             "tb_lkp_tipos_eventos_auditados", "tb_lkp_tipos_operacoes_auditoria", "tb_log_auditoria",
             "tb_log_auditoria_postagens", "tb_log_auditoria_agendamentos_coletas",
             "tb_log_auditoria_usuarios_condominios",
