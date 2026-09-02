@@ -3,6 +3,7 @@
 # ==============================================================================
 import random
 import hashlib
+import re
 import psycopg2
 from datetime import timedelta
 
@@ -16,21 +17,40 @@ from .unique_generator import cpf_unico, email_unico, hash_foto_unico
 
 SEED = 42  # fixo → massa reprodutível. Use None para variar a cada run.
 
-N_CONDOMINIOS_RESIDENCIAL   = 25
-N_CONDOMINIOS_COMERCIAL     = 8
-N_COOPERATIVAS              = 10
-N_USUARIOS_COMUM            = 120
+N_CONDOMINIOS_RESIDENCIAL   = 10
+N_CONDOMINIOS_COMERCIAL     = 4
+N_COOPERATIVAS              = 4
+N_USUARIOS_COMUM            = 40
 
-TORRES_POR_RESIDENCIAL      = (2, 8)
+TORRES_POR_RESIDENCIAL      = (2, 6)
 MORADORES_POR_TORRE         = (4, 10)
-USUARIOS_POR_COMERCIAL      = (5, 15)
+USUARIOS_POR_COMERCIAL      = (6, 10)
 
-PONTOS_COLETA_POR_COOPERATIVA = (2, 3)
-POSTAGENS_POR_OCUPANTE        = (1, 4)
-VOTOS_POR_POSTAGEM            = (5, 15)
-NOTIFICACOES_POR_USUARIO      = (2, 5)
-AGENDAMENTOS_POR_CONDOMINIO   = (1, 2)
-VISITAS_POR_AGENDAMENTO       = (2, 5)
+PONTOS_COLETA_POR_COOPERATIVA = (2, 4)
+POSTAGENS_POR_OCUPANTE        = (0, 4)
+VOTOS_POR_POSTAGEM            = (4, 10)
+NOTIFICACOES_POR_USUARIO      = (1, 2)
+AGENDAMENTOS_POR_CONDOMINIO   = (1, 10)
+VISITAS_POR_AGENDAMENTO       = (2, 4)
+
+
+def gerar_senha_segura(email_usuario: str) -> str:
+    """
+    Gera uma senha de massa de teste respeitando a política:
+    - mínimo 8 caracteres
+    - 1 letra maiúscula
+    - 1 letra minúscula
+    - 1 caractere especial
+
+    A senha gerada é posteriormente armazenada como hash.
+    """
+    base = re.sub(r"[^a-zA-Z0-9]", "", email_usuario.split("@")[0])
+    base = (base[:5] or "Eco") + "A1!"
+    return base + "@Eco"
+
+def hash_senha(senha: str) -> str:
+    """Hash determinístico para popular o banco de desenvolvimento."""
+    return "$2b$12$" + hashlib.sha256(senha.encode("utf-8")).hexdigest()[:53]
 
 fk  = FakerBR(seed=SEED)
 rng = random.Random(SEED)
@@ -306,7 +326,7 @@ def criar_usuario(cur, tipo_usuario_id, n_telefones=(1, 1)):
     """
     nome        = fk.name()
     email       = email_unico(fk, nome)
-    senha_hash  = fk.password(email)
+    senha_hash  = hash_senha(gerar_senha_segura(email))
     nascimento  = fk.date_of_birth(18, 75)
     cpf         = cpf_unico(fk)
     avatar      = fk.url(path="avatares", ext="jpg") if fk.boolean(40) else None
