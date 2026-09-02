@@ -15,21 +15,22 @@ from .faker_br import FakerBR
 
 SEED = 42  # fixo → massa reprodutível. Use None para variar a cada run.
 
-N_CONDOMINIOS_RESIDENCIAL   = 4
+N_CONDOMINIOS_RESIDENCIAL   = 3
 N_CONDOMINIOS_COMERCIAL     = 2
 N_COOPERATIVAS              = 3
-N_USUARIOS_COMUM            = 12
+N_USUARIOS_COMUM            = 10
 
 TORRES_POR_RESIDENCIAL      = (2, 3)
-MORADORES_POR_TORRE         = (2, 5)
-USUARIOS_POR_COMERCIAL      = (4, 8)
+MORADORES_POR_TORRE         = (2, 3)
+USUARIOS_POR_COMERCIAL      = (3, 5)
 
 PONTOS_COLETA_POR_COOPERATIVA = (2, 3)
-POSTAGENS_POR_OCUPANTE        = (0, 6)
-VOTOS_POR_POSTAGEM            = (5, 12)
-NOTIFICACOES_POR_USUARIO      = (2, 5)
+POSTAGENS_POR_OCUPANTE        = (0, 2)
+VOTOS_POR_POSTAGEM            = (5, 9)
+NOTIFICACOES_POR_USUARIO      = (1, 2)
 AGENDAMENTOS_POR_CONDOMINIO   = (1, 2)
 VISITAS_POR_AGENDAMENTO       = (2, 5)
+AULAS_POR_USUARIO             = (1, 3)
 
 fk  = FakerBR(seed=SEED)
 rng = random.Random(SEED)
@@ -584,7 +585,7 @@ def simular_votos_postagem(cur, postagem_id, usuario_dono_id, votantes_do_condom
 
     votantes = fk.random_elements(candidatos, length=qtd_votos, unique=True)
     for usuario_id in votantes:
-        tipo_voto = veredito if fk.boolean(85) else contrario
+        tipo_voto = veredito if fk.boolean(90) else contrario
         motivo_id = fk.random_element(motivos_denuncia_ids) if tipo_voto == "denunciar" else None
         comentario = fk.sentence(6) if fk.boolean(30) else None
         try:
@@ -800,7 +801,7 @@ def popular_quizzes(cur, cursos_ids, aulas_por_curso):
                     perguntas.append((pergunta_id, cur.fetchall()))
             else:
                 escolhidas = fk.random_elements(
-                    _PERGUNTAS_MODELO, length=min(3, len(_PERGUNTAS_MODELO)), unique=True
+                    _PERGUNTAS_MODELO, length=min(2, len(_PERGUNTAS_MODELO)), unique=True
                 )
                 for ordem, (enunciado, alternativas, idx_correta) in enumerate(escolhidas, start=1):
                     pergunta_id = fetch_id(

@@ -42,6 +42,7 @@ from utils.database import (
     NOTIFICACOES_POR_USUARIO,
     AGENDAMENTOS_POR_CONDOMINIO,
     VISITAS_POR_AGENDAMENTO,
+    AULAS_POR_USUARIO,
     fk,
     rng,
     popular_tipos_usuarios,
@@ -91,6 +92,11 @@ def main():
 
     conn = get_connection()
     cur = conn.cursor()
+
+    # Toda execução parte de um estado limpo -- evita duplicar codigo_acesso,
+    # emails, hash_foto etc. entre uma rodada e outra do script.
+    limpar_dados_banco(cur)
+
     print("\n[1/9] Tabelas de domínio / lookup...")
     try:
         tipos_usuario = popular_tipos_usuarios(cur)
@@ -262,21 +268,23 @@ def main():
         print("      -> trust_score recalculado via sp_atualizar_trust_score para todos os vínculos.")
 
         print("[9/9] Matrículas em cursos, tentativas de quiz e notificações...")
+        todas_aulas = [aula_id for aulas in aulas_por_curso.values() for aula_id in aulas]
         todos_usuarios_ensino = usuarios_comuns + [o["usuario_id"] for o in ocupantes]
         for usuario_id in todos_usuarios_ensino:
             ocupante = ocupante_por_usuario.get(usuario_id)
             condominio_id = ocupante["condominio_id"] if ocupante else None
             torre_id = ocupante["torre_id"] if ocupante else None
 
-            cursos_escolhidos = fk.random_elements(list(aulas_por_curso.keys()), length=rng.randint(1, 2), unique=True)
-            for titulo_curso in cursos_escolhidos:
-                aulas_concluidas = matricular_usuario_em_aulas(cur, usuario_id, aulas_por_curso[titulo_curso])
-                for aula_id in aulas_concluidas:
-                    if fk.boolean(70):
-                        simular_tentativa_quiz(
-                            cur, usuario_id, quizzes_por_aula[aula_id],
-                            condominio_id=condominio_id, torre_id=torre_id,
-                        )
+            # Amostra algumas aulas (não o curso inteiro) para manter o
+            # volume de matrículas por usuário realista.
+            aulas_escolhidas = fk.random_elements(todas_aulas, length=rng.randint(*AULAS_POR_USUARIO), unique=True)
+            aulas_concluidas = matricular_usuario_em_aulas(cur, usuario_id, aulas_escolhidas)
+            for aula_id in aulas_concluidas:
+                if fk.boolean(70):
+                    simular_tentativa_quiz(
+                        cur, usuario_id, quizzes_por_aula[aula_id],
+                        condominio_id=condominio_id, torre_id=torre_id,
+                    )
 
         todos_usuarios_para_notificar = set(
             usuarios_comuns
