@@ -3,11 +3,13 @@
 # ==============================================================================
 import random
 import hashlib
+import re
 import psycopg2
 from datetime import timedelta
 
 from .helpers import fetch_id, call_procedure, DSN
 from .faker_br import FakerBR
+from .unique_generator import cpf_unico, email_unico, hash_foto_unico
 
 # ==============================================================================
 # CONFIGURAÇÃO / VOLUMETRIA
@@ -15,21 +17,40 @@ from .faker_br import FakerBR
 
 SEED = 42  # fixo → massa reprodutível. Use None para variar a cada run.
 
-N_CONDOMINIOS_RESIDENCIAL   = 4
-N_CONDOMINIOS_COMERCIAL     = 2
-N_COOPERATIVAS              = 3
-N_USUARIOS_COMUM            = 12
+N_CONDOMINIOS_RESIDENCIAL   = 10
+N_CONDOMINIOS_COMERCIAL     = 4
+N_COOPERATIVAS              = 4
+N_USUARIOS_COMUM            = 40
 
-TORRES_POR_RESIDENCIAL      = (2, 3)
-MORADORES_POR_TORRE         = (2, 5)
-USUARIOS_POR_COMERCIAL      = (4, 8)
+TORRES_POR_RESIDENCIAL      = (2, 6)
+MORADORES_POR_TORRE         = (4, 10)
+USUARIOS_POR_COMERCIAL      = (6, 10)
 
-PONTOS_COLETA_POR_COOPERATIVA = (2, 3)
-POSTAGENS_POR_OCUPANTE        = (0, 6)
-VOTOS_POR_POSTAGEM            = (5, 12)
-NOTIFICACOES_POR_USUARIO      = (2, 5)
-AGENDAMENTOS_POR_CONDOMINIO   = (1, 2)
-VISITAS_POR_AGENDAMENTO       = (2, 5)
+PONTOS_COLETA_POR_COOPERATIVA = (2, 4)
+POSTAGENS_POR_OCUPANTE        = (0, 4)
+VOTOS_POR_POSTAGEM            = (4, 10)
+NOTIFICACOES_POR_USUARIO      = (1, 2)
+AGENDAMENTOS_POR_CONDOMINIO   = (1, 10)
+VISITAS_POR_AGENDAMENTO       = (2, 4)
+
+
+def gerar_senha_segura(email_usuario: str) -> str:
+    """
+    Gera uma senha de massa de teste respeitando a política:
+    - mínimo 8 caracteres
+    - 1 letra maiúscula
+    - 1 letra minúscula
+    - 1 caractere especial
+
+    A senha gerada é posteriormente armazenada como hash.
+    """
+    base = re.sub(r"[^a-zA-Z0-9]", "", email_usuario.split("@")[0])
+    base = (base[:5] or "Eco") + "A1!"
+    return base + "@Eco"
+
+def hash_senha(senha: str) -> str:
+    """Hash determinístico para popular o banco de desenvolvimento."""
+    return "$2b$12$" + hashlib.sha256(senha.encode("utf-8")).hexdigest()[:53]
 
 fk  = FakerBR(seed=SEED)
 rng = random.Random(SEED)
@@ -304,12 +325,12 @@ def criar_usuario(cur, tipo_usuario_id, n_telefones=(1, 1)):
     "Administrador" não têm tabela de subtipo.
     """
     nome        = fk.name()
-    email       = fk.email(nome)
-    senha_hash  = fk.password(email)
+    email       = email_unico(fk, nome)
+    senha_hash  = hash_senha(gerar_senha_segura(email))
     nascimento  = fk.date_of_birth(18, 75)
-    cpf         = fk.cpf()
+    cpf         = cpf_unico(fk)
     avatar      = fk.url(path="avatares", ext="jpg") if fk.boolean(40) else None
-    ativo       = fk.boolean(95)
+    ativo       = fk.boolean(70)
     registro_em = fk.date_time_between(900, 0)
     endereco_id = criar_endereco(cur)
 
@@ -368,7 +389,7 @@ def criar_condominio(cur, tipo_condominio_id, sindico_id, nome_fantasia, comerci
     endereco_id  = criar_endereco(cur)
     cnpj         = fk.cnpj() if comercial else (fk.cnpj() if fk.boolean(20) else None)
     codigo_acesso = proximo_codigo_acesso()
-    ativo        = fk.boolean(95)
+    ativo        = fk.boolean(80)
 
     return fetch_id(
         cur,
@@ -536,10 +557,9 @@ def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem,
     # aguardar a comunidade votar (simular_votos_postagem/sp_processar_voto_postagem)
     # antes de virar aprovada ou reprovada.
     capturada_em = data_postagem - timedelta(minutes=rng.randint(1, 30))
-    hash_foto = hashlib.sha256(
-        f"{usuario_id}-{condominio_id}-{categoria_id}-"
-        f"{data_postagem.isoformat()}-{rng.random()}".encode("utf-8")
-    ).hexdigest()
+    hash_foto = hash_foto_unico(
+        f"{usuario_id}-{condominio_id}-{categoria_id}-{data_postagem.isoformat()}"
+    )
 
     return fetch_id(
         cur,
