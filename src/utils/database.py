@@ -10,6 +10,7 @@ from datetime import timedelta
 
 from .helpers import fetch_id, call_procedure, DSN
 from .faker_br import FakerBR
+from .unique_generator import cpf_unico, email_unico, hash_foto_unico
 
 # ==============================================================================
 # CONFIGURAÇÃO / VOLUMETRIA
@@ -307,10 +308,10 @@ def criar_usuario(cur, tipo_usuario_id, n_telefones=(1, 1)):
     "Administrador" não têm tabela de subtipo.
     """
     nome        = fk.name()
-    email       = fk.email(nome)
-    senha_hash  = fk.password(email)
+    email       = email_unico(fk, nome)
+    senha_hash  = hash_senha(gerar_senha_segura(email))
     nascimento  = fk.date_of_birth(18, 75)
-    cpf         = fk.cpf()
+    cpf         = cpf_unico(fk)
     avatar      = fk.url(path="avatares", ext="jpg") if fk.boolean(40) else None
     ativo       = fk.boolean(95)
     registro_em = fk.date_time_growth(900, 0)
@@ -371,7 +372,7 @@ def criar_condominio(cur, tipo_condominio_id, sindico_id, nome_fantasia, comerci
     endereco_id  = criar_endereco(cur)
     cnpj         = fk.cnpj() if comercial else (fk.cnpj() if fk.boolean(20) else None)
     codigo_acesso = proximo_codigo_acesso()
-    ativo        = fk.boolean(95)
+    ativo        = fk.boolean(80)
 
     return fetch_id(
         cur,
@@ -539,10 +540,9 @@ def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem,
     # aguardar a comunidade votar (simular_votos_postagem/sp_processar_voto_postagem)
     # antes de virar aprovada ou reprovada.
     capturada_em = data_postagem - timedelta(minutes=rng.randint(1, 30))
-    hash_foto = hashlib.sha256(
-        f"{usuario_id}-{condominio_id}-{categoria_id}-"
-        f"{data_postagem.isoformat()}-{rng.random()}".encode("utf-8")
-    ).hexdigest()
+    hash_foto = hash_foto_unico(
+        f"{usuario_id}-{condominio_id}-{categoria_id}-{data_postagem.isoformat()}"
+    )
 
     return fetch_id(
         cur,
