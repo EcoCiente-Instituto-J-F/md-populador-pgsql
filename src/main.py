@@ -8,19 +8,25 @@ Carga inicial de massa de dados do EcoCiente. Popula o schema PostgreSQL
 Pré-requisito: rodar ecociente_schema_ajustado.sql antes.
 
 Instalação:
-    pip install psycopg2-binary --break-system-packages
+    pip install -r requirements.txt
 
 Uso:
-    python main.py
+    python main.py [--seed N] [--force]
     (configure utils.helpers.DB_CONFIG ou exporte ECOCIENTE_DSN /
      ECOCIENTE_DB_HOST / ECOCIENTE_DB_PORT / ECOCIENTE_DB_NAME /
      ECOCIENTE_DB_USER / ECOCIENTE_DB_PASSWORD / ECOCIENTE_DB_SSLMODE)
+
+    --seed N   usa N em vez do SEED fixo de utils/database.py (massa diferente a cada valor).
+    --force    pula a confirmação antes de apagar os dados existentes
+               (mesmo efeito de exportar ECOCIENTE_ALLOW_RESET=1).
 """
 
+import argparse
+import os
 import sys
 from collections import defaultdict
 
-from utils.helpers import get_connection
+from utils.helpers import get_connection, target_description
 
 try:
     import psycopg2  # noqa: F401  (checagem antecipada de dependência instalada)
@@ -42,6 +48,7 @@ from utils.database import (
     NOTIFICACOES_POR_USUARIO,
     AGENDAMENTOS_POR_CONDOMINIO,
     VISITAS_POR_AGENDAMENTO,
+    AULAS_POR_USUARIO,
     fk,
     rng,
     popular_tipos_usuarios,
@@ -84,13 +91,55 @@ from utils.database import (
 # ORQUESTRAÇÃO PRINCIPAL
 # ==============================================================================
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Carga inicial de massa de dados do EcoCiente.")
+    parser.add_argument("--seed", type=int, default=None,
+                         help="Seed do gerador aleatório (padrão: SEED fixo de utils/database.py).")
+    parser.add_argument("--force", action="store_true",
+                         help="Pula a confirmação antes de apagar os dados existentes.")
+    return parser.parse_args()
+
+
+def confirmar_limpeza(force):
+    """
+    O script apaga TODOS os dados de negócio antes de popular de novo --
+    essa confirmação evita rodar isso sem querer contra o banco errado.
+    Pulada com --force ou ECOCIENTE_ALLOW_RESET=1 (útil em CI/automação).
+    """
+    if force or os.environ.get("ECOCIENTE_ALLOW_RESET") == "1":
+        return True
+    alvo = target_description()
+    print(f"\n[ATENÇÃO] Isso vai APAGAR todos os dados de negócio em: {alvo}")
+    try:
+        resposta = input("Digite 'sim' para confirmar: ").strip().lower()
+    except EOFError:
+        resposta = ""
+    return resposta == "sim"
+
+
 def main():
+    args = parse_args()
+    if args.seed is not None:
+        fk.reseed(args.seed)
+        rng.seed(args.seed)
+
     print("=" * 78)
     print("EcoCiente - Carga inicial de massa de dados (FakerBR)")
     print("=" * 78)
 
     conn = get_connection()
     cur = conn.cursor()
+
+    if not confirmar_limpeza(args.force):
+        print("Operação cancelada -- nenhuma alteração foi feita.")
+        cur.close()
+        conn.close()
+        return
+
+    # Toda execução parte de um estado limpo -- evita duplicar codigo_acesso,
+    # emails, hash_foto etc. entre uma rodada e outra do script.
+    limpar_dados_banco(cur)
+
     print("\n[1/9] Tabelas de domínio / lookup...")
     try:
         tipos_usuario = popular_tipos_usuarios(cur)
@@ -137,7 +186,7 @@ def main():
             sindico_usuario_id, sindico_nome = criar_usuario(cur, tipos_usuario["Síndico Residencial"])
             sindico_id = criar_subtipo_sindico(cur, sindico_usuario_id)
 
-            nome_condominio = f"Condomínio {fk.street_name()}"
+            nome_condominio = fk.condominio_name()
             condominio_id = criar_condominio(
                 cur, tipos_condominio["Residencial"], sindico_id, nome_condominio, comercial=False
             )
@@ -169,7 +218,7 @@ def main():
             sindico_usuario_id, _ = criar_usuario(cur, tipos_usuario["Síndico Comercial"])
             sindico_id = criar_subtipo_sindico(cur, sindico_usuario_id)
 
-            nome_condominio = f"Edifício Comercial {fk.street_name()}"
+            nome_condominio = fk.edificio_comercial_name()
             condominio_id = criar_condominio(
                 cur, tipos_condominio["Comercial"], sindico_id, nome_condominio, comercial=True
             )
@@ -203,7 +252,7 @@ def main():
             votantes_condominio = votantes_por_condominio.get(ocupante["condominio_id"], [])
             for _ in range(rng.randint(*POSTAGENS_POR_OCUPANTE)):
                 categoria_id = fk.random_element(categorias_reciclaveis)
-                data_postagem = fk.date_time_between(90, 0)
+                data_postagem = fk.date_time_growth(90, 0)
                 postagem_id = criar_postagem(
                     cur, ocupante["usuario_id"], ocupante["condominio_id"],
                     categoria_id, data_postagem, status_em_analise_id,
@@ -262,21 +311,30 @@ def main():
         print("      -> trust_score recalculado via sp_atualizar_trust_score para todos os vínculos.")
 
         print("[9/9] Matrículas em cursos, tentativas de quiz e notificações...")
+        todas_aulas = [aula_id for aulas in aulas_por_curso.values() for aula_id in aulas]
         todos_usuarios_ensino = usuarios_comuns + [o["usuario_id"] for o in ocupantes]
         for usuario_id in todos_usuarios_ensino:
             ocupante = ocupante_por_usuario.get(usuario_id)
             condominio_id = ocupante["condominio_id"] if ocupante else None
             torre_id = ocupante["torre_id"] if ocupante else None
 
-            cursos_escolhidos = fk.random_elements(list(aulas_por_curso.keys()), length=rng.randint(1, 2), unique=True)
-            for titulo_curso in cursos_escolhidos:
-                aulas_concluidas = matricular_usuario_em_aulas(cur, usuario_id, aulas_por_curso[titulo_curso])
-                for aula_id in aulas_concluidas:
-                    if fk.boolean(70):
-                        simular_tentativa_quiz(
-                            cur, usuario_id, quizzes_por_aula[aula_id],
-                            condominio_id=condominio_id, torre_id=torre_id,
-                        )
+            # Amostra algumas aulas (não o curso inteiro) para manter o
+            # volume de matrículas por usuário realista. Só 20 das 238 aulas
+            # têm quiz (a última de cada curso âncora) -- adiciona uma delas
+            # com 40% de chance para garantir tentativas de quiz de verdade.
+            aulas_escolhidas = set(fk.random_elements(todas_aulas, length=rng.randint(*AULAS_POR_USUARIO), unique=True))
+            if quizzes_por_aula and fk.boolean(40):
+                aulas_escolhidas.add(fk.random_element(list(quizzes_por_aula.keys())))
+            aulas_escolhidas = list(aulas_escolhidas)
+            aulas_concluidas = matricular_usuario_em_aulas(cur, usuario_id, aulas_escolhidas)
+            for aula_id in aulas_concluidas:
+                # só uma fração das aulas tem quiz associado (1 quiz por curso,
+                # ancorado na última aula) -- as demais não aparecem no dict.
+                if aula_id in quizzes_por_aula and fk.boolean(70):
+                    simular_tentativa_quiz(
+                        cur, usuario_id, quizzes_por_aula[aula_id],
+                        condominio_id=condominio_id, torre_id=torre_id,
+                    )
 
         todos_usuarios_para_notificar = set(
             usuarios_comuns

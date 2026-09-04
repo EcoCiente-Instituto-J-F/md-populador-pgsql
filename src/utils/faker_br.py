@@ -8,6 +8,7 @@ class FakerBR:
 
     def __init__(self, seed=None):
         self._rng = random.Random(seed)
+        self.reseed = self._rng.seed
 
         self._primeiros = [
             "Ana","Bruno","Carla","Diego","Dominic","Elena","Felipe","Gabriela","Henrique","Rahqueel",
@@ -167,6 +168,21 @@ class FakerBR:
         delta = (end - start).total_seconds()
         return start + timedelta(seconds=self._r().random() * delta)
 
+    def date_time_growth(self, start_days_ago=730, end_days_ago=0, power=2.5):
+        """
+        Como date_time_between, mas enviesado para o fim do intervalo (mais
+        perto de hoje) -- usa r = random()**(1/power), que concentra a massa
+        próximo de 1. Serve para simular crescimento ao longo do tempo
+        (mais usuários/postagens recentes que antigos) em vez de ruído
+        uniforme, o que fica mais legível em gráficos de série temporal.
+        """
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(days=start_days_ago)
+        end   = now - timedelta(days=end_days_ago)
+        delta = (end - start).total_seconds()
+        r = self._r().random() ** (1.0 / power)
+        return start + timedelta(seconds=r * delta)
+
     def date_time_future(self, max_days=90):
         now = datetime.now(timezone.utc)
         return now + timedelta(days=self._r().randint(1, max_days),
@@ -196,8 +212,38 @@ class FakerBR:
 
     def company(self):
         tipos = ["Cooperativa","EcoColeta","ReciclaCity","GreenColect","CoopVerde",
-                 "EcoSol","Reciclar","CoopAmb","LimpaCity","EcoNet"]
+                 "EcoSol","Reciclar","CoopAmb","LimpaCity","EcoNet","Recicla Mais",
+                 "Verde Vida","EcoPonto","Recicla Brasil","Coleta Verde","EcoAção",
+                 "Sustenta","BioColeta","Renova Verde","Planeta Limpo"]
         return f"{self._r().choice(tipos)} {self.last_name()}"
+
+    def condominio_name(self):
+        padroes = [
+            "Residencial {}", "Condomínio {}", "Villa {}", "Recanto {}",
+            "Parque {}", "Jardim {}", "Bosque {}", "Vila {}", "Spazio {}",
+            "Mirante {}", "Portal {}", "Solar {}",
+        ]
+        temas = [
+            "das Flores", "do Sol", "Verde", "dos Ipês", "das Palmeiras",
+            "Águas Claras", "Bela Vista", "Monte Alegre", "Vale Verde",
+            "das Acácias", "do Bosque", "Jequitibá", "das Araucárias",
+            "Colina Verde", "Costa Azul", "Serra Azul", "Boa Vista",
+            "Nova Esperança", "das Cerejeiras", "Alto da Serra",
+        ]
+        return self._r().choice(padroes).format(self._r().choice(temas))
+
+    def edificio_comercial_name(self):
+        padroes = [
+            "Edifício {}", "Business Center {}", "Corporate {}", "Torre {}",
+            "Ed. Comercial {}", "Centro Empresarial {}",
+        ]
+        temas = [
+            "Paulista", "Faria Lima", "Berrini", "Alphaville", "Atlântico",
+            "Millennium", "Prime", "Executive", "Horizonte", "Global",
+            "Trade Center", "Pinheiros", "Ibirapuera", "Nações Unidas",
+            "Panamérica",
+        ]
+        return self._r().choice(padroes).format(self._r().choice(temas))
 
     def url(self, path="fotos", ext="jpg"):
         uid = self._r().randint(10000, 99999)

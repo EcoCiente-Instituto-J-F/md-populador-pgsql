@@ -3,7 +3,8 @@
 # ==============================================================================
 import random
 import hashlib
-import re
+import json
+import os
 import psycopg2
 from datetime import timedelta
 
@@ -17,40 +18,22 @@ from .unique_generator import cpf_unico, email_unico, hash_foto_unico
 
 SEED = 42  # fixo → massa reprodutível. Use None para variar a cada run.
 
-N_CONDOMINIOS_RESIDENCIAL   = 10
-N_CONDOMINIOS_COMERCIAL     = 4
-N_COOPERATIVAS              = 4
-N_USUARIOS_COMUM            = 40
+N_CONDOMINIOS_RESIDENCIAL   = 3
+N_CONDOMINIOS_COMERCIAL     = 2
+N_COOPERATIVAS              = 3
+N_USUARIOS_COMUM            = 10
 
-TORRES_POR_RESIDENCIAL      = (2, 6)
-MORADORES_POR_TORRE         = (4, 10)
-USUARIOS_POR_COMERCIAL      = (6, 10)
+TORRES_POR_RESIDENCIAL      = (2, 3)
+MORADORES_POR_TORRE         = (2, 3)
+USUARIOS_POR_COMERCIAL      = (3, 5)
 
-PONTOS_COLETA_POR_COOPERATIVA = (2, 4)
-POSTAGENS_POR_OCUPANTE        = (0, 4)
-VOTOS_POR_POSTAGEM            = (4, 10)
+PONTOS_COLETA_POR_COOPERATIVA = (2, 3)
+POSTAGENS_POR_OCUPANTE        = (0, 2)
+VOTOS_POR_POSTAGEM            = (5, 9)
 NOTIFICACOES_POR_USUARIO      = (1, 2)
-AGENDAMENTOS_POR_CONDOMINIO   = (1, 10)
-VISITAS_POR_AGENDAMENTO       = (2, 4)
-
-
-def gerar_senha_segura(email_usuario: str) -> str:
-    """
-    Gera uma senha de massa de teste respeitando a política:
-    - mínimo 8 caracteres
-    - 1 letra maiúscula
-    - 1 letra minúscula
-    - 1 caractere especial
-
-    A senha gerada é posteriormente armazenada como hash.
-    """
-    base = re.sub(r"[^a-zA-Z0-9]", "", email_usuario.split("@")[0])
-    base = (base[:5] or "Eco") + "A1!"
-    return base + "@Eco"
-
-def hash_senha(senha: str) -> str:
-    """Hash determinístico para popular o banco de desenvolvimento."""
-    return "$2b$12$" + hashlib.sha256(senha.encode("utf-8")).hexdigest()[:53]
+AGENDAMENTOS_POR_CONDOMINIO   = (1, 2)
+VISITAS_POR_AGENDAMENTO       = (2, 5)
+AULAS_POR_USUARIO             = (1, 3)
 
 fk  = FakerBR(seed=SEED)
 rng = random.Random(SEED)
@@ -330,8 +313,8 @@ def criar_usuario(cur, tipo_usuario_id, n_telefones=(1, 1)):
     nascimento  = fk.date_of_birth(18, 75)
     cpf         = cpf_unico(fk)
     avatar      = fk.url(path="avatares", ext="jpg") if fk.boolean(40) else None
-    ativo       = fk.boolean(70)
-    registro_em = fk.date_time_between(900, 0)
+    ativo       = fk.boolean(95)
+    registro_em = fk.date_time_growth(900, 0)
     endereco_id = criar_endereco(cur)
 
     usuario_id = fetch_id(
@@ -434,7 +417,7 @@ def criar_vinculo_condominio(cur, usuario_id, condominio_id, aprovado_por_usuari
     usuário pode votar em postagens do condomínio via
     sp_processar_voto_postagem.
     """
-    data_entrada = fk.date_time_between(700, 30)
+    data_entrada = fk.date_time_growth(700, 30)
     aprovado     = fk.boolean(92)
     saiu         = fk.boolean(8)
     data_saida   = fk.date_time_between(29, 0) if saiu else None
@@ -500,7 +483,7 @@ def criar_cooperativa(cur, usuario_id):
            RETURNING id_cooperativa""",
         (
             fk.cnpj(), nome, fk.email(nome), fk.phone(),
-            fk.date_time_between(900, 60), usuario_id, endereco_id,
+            fk.date_time_growth(900, 60), usuario_id, endereco_id,
         ),
     )
     return cooperativa_id, nome
@@ -604,7 +587,7 @@ def simular_votos_postagem(cur, postagem_id, usuario_dono_id, votantes_do_condom
 
     votantes = fk.random_elements(candidatos, length=qtd_votos, unique=True)
     for usuario_id in votantes:
-        tipo_voto = veredito if fk.boolean(85) else contrario
+        tipo_voto = veredito if fk.boolean(90) else contrario
         motivo_id = fk.random_element(motivos_denuncia_ids) if tipo_voto == "denunciar" else None
         comentario = fk.sentence(6) if fk.boolean(30) else None
         try:
@@ -690,41 +673,36 @@ def criar_avaliacao_visita(cur, visita_coleta_id, usuario_avaliador_id):
 
 # ==============================================================================
 # 7. CURSOS, AULAS, QUIZZES E PROGRESSO
+#
+# Conteúdo real da trilha EcoCiente (40 cursos, 238 aulas, 20 quizzes,
+# 246 perguntas, 840 alternativas), carregado de utils/data/curriculo_ecociente.json.
+# Cada quiz é ancorado na última aula do seu 1o "curso relacionado" (o quiz
+# funciona como revisão de fechamento daquele curso); tb_quizzes.aula_id é
+# UNIQUE, então cada quiz precisa de uma aula própria -- só uma fração das
+# 238 aulas tem quiz associado, o resto fica só como conteúdo de curso.
 # ==============================================================================
 
+_CURRICULO_PATH = os.path.join(os.path.dirname(__file__), "data", "curriculo_ecociente.json")
+
+
+def _carregar_curriculo():
+    with open(_CURRICULO_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
 def popular_cursos_e_aulas(cur):
-    cursos_def = [
-        (
-            "Reciclagem de Materiais",
-            "Explica os tipos de materiais recicláveis e onde/como reciclar cada um.",
-            [
-                "O que é reciclagem e por que ela importa",
-                "Plásticos: tipos, símbolos e como separar",
-                "Papel e papelão: o que pode e o que não pode reciclar",
-                "Vidro e metal: cuidados no descarte",
-                "Lixo eletrônico: pontos de coleta especializados",
-                "Como montar a separação correta em casa",
-            ],
-        ),
-        (
-            "Compostagem Residencial e de Apartamento (Coletiva)",
-            "Como reciclar resíduo orgânico através da compostagem doméstica e coletiva.",
-            [
-                "Introdução à compostagem: o que pode ir na composteira",
-                "Montando uma composteira em apartamento",
-                "Compostagem coletiva no condomínio: como organizar",
-                "Resolvendo problemas comuns (odor, moscas, excesso de umidade)",
-                "Usando o composto na horta e em vasos",
-            ],
-        ),
-    ]
+    """
+    Popula os 40 cursos e 238 aulas reais da trilha. Retorna
+    (cursos_ids, aulas_por_curso) no mesmo formato de antes:
+    {titulo_curso: id_curso} e {titulo_curso: [id_aula, ...]} (em ordem).
+    """
+    curriculo = _carregar_curriculo()
 
     cursos_ids = {}
-    aulas_ids  = {}
-    for titulo, descricao, lista_aulas in cursos_def:
-        cur.execute(
-            "SELECT id_curso FROM tb_cursos WHERE titulo_curso = %s", (titulo,)
-        )
+    aulas_por_curso = {}
+    for curso in curriculo["cursos"]:
+        titulo = curso["titulo_curso"]
+        cur.execute("SELECT id_curso FROM tb_cursos WHERE titulo_curso = %s", (titulo,))
         row = cur.fetchone()
         if row:
             curso_id = row[0]
@@ -733,119 +711,105 @@ def popular_cursos_e_aulas(cur):
                 cur,
                 """INSERT INTO tb_cursos (titulo_curso, descricao_curso, esta_ativo)
                    VALUES (%s, %s, TRUE) RETURNING id_curso""",
-                (titulo, descricao),
+                (titulo, curso["descricao_curso"]),
             )
         cursos_ids[titulo] = curso_id
 
         cur.execute(
-            "SELECT id_aula FROM tb_aulas WHERE curso_id = %s ORDER BY ordem",
-            (curso_id,),
+            "SELECT id_aula FROM tb_aulas WHERE curso_id = %s ORDER BY ordem", (curso_id,)
         )
         existentes = [r[0] for r in cur.fetchall()]
         if existentes:
-            aulas_ids[titulo] = existentes
+            aulas_por_curso[titulo] = existentes
             continue
 
         ids_aula = []
-        for ordem, titulo_aula in enumerate(lista_aulas, start=1):
+        for aula in sorted(curso["aulas"], key=lambda a: a["ordem"]):
             aula_id = fetch_id(
                 cur,
                 """INSERT INTO tb_aulas (curso_id, titulo_aula, conteudo_aula, ordem)
                    VALUES (%s, %s, %s, %s) RETURNING id_aula""",
-                (curso_id, titulo_aula, fk.sentence(25), ordem),
+                (curso_id, aula["titulo_aula"], aula["conteudo_aula"], aula["ordem"]),
             )
             ids_aula.append(aula_id)
-        aulas_ids[titulo] = ids_aula
+        aulas_por_curso[titulo] = ids_aula
 
-    return cursos_ids, aulas_ids
-
-
-# Banco fixo de perguntas/alternativas reaproveitado por todos os quizzes.
-_PERGUNTAS_MODELO = [
-    ("Qual desses materiais é reciclável?",
-     ["Papel limpo e seco", "Isopor sujo de comida", "Fralda descartável usada", "Absorvente"], 0),
-    ("Antes de descartar uma embalagem de vidro, o ideal é:",
-     ["Lavar e secar", "Quebrar em pedaços pequenos", "Embrulhar em papel jornal", "Descartar suja mesmo"], 0),
-    ("Pilhas e baterias usadas devem ir para:",
-     ["O lixo comum", "Um ponto de coleta especializado", "O vaso sanitário", "A composteira"], 1),
-    ("A compostagem é indicada principalmente para:",
-     ["Resíduo orgânico", "Vidro", "Metal", "Lixo eletrônico"], 0),
-    ("O símbolo de reciclagem em uma embalagem plástica indica:",
-     ["Que ela é biodegradável", "O tipo de resina/polímero usado", "Que não pode ser reciclada", "O peso da embalagem"], 1),
-]
+    return cursos_ids, aulas_por_curso
 
 
 def popular_quizzes(cur, cursos_ids, aulas_por_curso):
     """
-    Cria 1 quiz por aula (tb_quizzes.aula_id é UNIQUE), com 3 perguntas do
-    banco fixo acima.
+    Cria os 20 quizzes reais da trilha, cada um na última aula do seu curso
+    âncora (aulas_por_curso[curso][-1]), com as perguntas/alternativas reais
+    do banco de quizzes.
 
     Retorna {aula_id: {"quiz_id", "nota_minima", "perguntas": [(pergunta_id, [(alt_id, correta), ...]), ...]}}
+    -- só as aulas que têm quiz aparecem nesse dict.
     """
+    curriculo = _carregar_curriculo()
     quizzes_por_aula = {}
-    for titulo_curso, aula_ids in aulas_por_curso.items():
-        curso_id = cursos_ids[titulo_curso]
-        for aula_id in aula_ids:
-            cur.execute(
-                "SELECT id_quiz, nota_minima_aprovacao FROM tb_quizzes WHERE aula_id = %s",
-                (aula_id,),
+
+    for quiz in curriculo["quizzes"]:
+        curso_id = cursos_ids[quiz["curso_ancora"]]
+        aula_id = aulas_por_curso[quiz["curso_ancora"]][-1]
+
+        cur.execute(
+            "SELECT id_quiz, nota_minima_aprovacao FROM tb_quizzes WHERE aula_id = %s",
+            (aula_id,),
+        )
+        row = cur.fetchone()
+        if row:
+            quiz_id, nota_minima = row
+        else:
+            nota_minima = 70
+            pontos_recompensa = len(quiz["perguntas"]) * 2  # sempre > pontos_base (10) das categorias
+            quiz_id = fetch_id(
+                cur,
+                """INSERT INTO tb_quizzes
+                       (curso_id, aula_id, titulo_quiz, nota_minima_aprovacao, pontos_recompensa)
+                   VALUES (%s, %s, %s, %s, %s) RETURNING id_quiz""",
+                (curso_id, aula_id, quiz["titulo_quiz"], nota_minima, pontos_recompensa),
             )
-            row = cur.fetchone()
-            if row:
-                quiz_id, nota_minima = row
-            else:
-                quiz_id = fetch_id(
+
+        cur.execute(
+            "SELECT id_pergunta FROM tb_perguntas_quiz WHERE quiz_id = %s ORDER BY ordem",
+            (quiz_id,),
+        )
+        perguntas_existentes = cur.fetchall()
+
+        perguntas = []
+        if perguntas_existentes:
+            for (pergunta_id,) in perguntas_existentes:
+                cur.execute(
+                    "SELECT id_alternativa, correta FROM tb_alternativas_quiz WHERE pergunta_id = %s",
+                    (pergunta_id,),
+                )
+                perguntas.append((pergunta_id, cur.fetchall()))
+        else:
+            for ordem, pergunta in enumerate(quiz["perguntas"], start=1):
+                pergunta_id = fetch_id(
                     cur,
-                    """INSERT INTO tb_quizzes
-                           (curso_id, aula_id, titulo_quiz, nota_minima_aprovacao, pontos_recompensa)
-                       VALUES (%s, %s, %s, %s, %s) RETURNING id_quiz""",
-                    (curso_id, aula_id, "Quiz de fixação", 70, 20),
+                    """INSERT INTO tb_perguntas_quiz (quiz_id, enunciado, ordem)
+                       VALUES (%s, %s, %s) RETURNING id_pergunta""",
+                    (quiz_id, pergunta["enunciado"], ordem),
                 )
-                nota_minima = 70
-
-            cur.execute(
-                "SELECT id_pergunta FROM tb_perguntas_quiz WHERE quiz_id = %s ORDER BY ordem",
-                (quiz_id,),
-            )
-            perguntas_existentes = cur.fetchall()
-
-            perguntas = []
-            if perguntas_existentes:
-                for (pergunta_id,) in perguntas_existentes:
-                    cur.execute(
-                        "SELECT id_alternativa, correta FROM tb_alternativas_quiz "
-                        "WHERE pergunta_id = %s",
-                        (pergunta_id,),
-                    )
-                    perguntas.append((pergunta_id, cur.fetchall()))
-            else:
-                escolhidas = fk.random_elements(
-                    _PERGUNTAS_MODELO, length=min(3, len(_PERGUNTAS_MODELO)), unique=True
-                )
-                for ordem, (enunciado, alternativas, idx_correta) in enumerate(escolhidas, start=1):
-                    pergunta_id = fetch_id(
+                alt_ids = []
+                for alt in pergunta["alternativas"]:
+                    alt_id = fetch_id(
                         cur,
-                        """INSERT INTO tb_perguntas_quiz (quiz_id, enunciado, ordem)
-                           VALUES (%s, %s, %s) RETURNING id_pergunta""",
-                        (quiz_id, enunciado, ordem),
+                        """INSERT INTO tb_alternativas_quiz
+                               (pergunta_id, texto_alternativa, correta)
+                           VALUES (%s, %s, %s) RETURNING id_alternativa""",
+                        (pergunta_id, alt["texto"], alt["correta"]),
                     )
-                    alt_ids = []
-                    for i_alt, texto in enumerate(alternativas):
-                        alt_id = fetch_id(
-                            cur,
-                            """INSERT INTO tb_alternativas_quiz
-                                   (pergunta_id, texto_alternativa, correta)
-                               VALUES (%s, %s, %s) RETURNING id_alternativa""",
-                            (pergunta_id, texto, i_alt == idx_correta),
-                        )
-                        alt_ids.append((alt_id, i_alt == idx_correta))
-                    perguntas.append((pergunta_id, alt_ids))
+                    alt_ids.append((alt_id, alt["correta"]))
+                perguntas.append((pergunta_id, alt_ids))
 
-            quizzes_por_aula[aula_id] = {
-                "quiz_id": quiz_id,
-                "nota_minima": float(nota_minima),
-                "perguntas": perguntas,
-            }
+        quizzes_por_aula[aula_id] = {
+            "quiz_id": quiz_id,
+            "nota_minima": float(nota_minima),
+            "perguntas": perguntas,
+        }
 
     return quizzes_por_aula
 
@@ -858,7 +822,7 @@ def matricular_usuario_em_aulas(cur, usuario_id, lista_aula_ids):
     progresso = []
     for aula_id in lista_aula_ids:
         vai_concluir = fk.boolean(55)
-        data_inicio  = fk.date_time_between(180, 1)
+        data_inicio  = fk.date_time_growth(180, 1)
         uc_id = fetch_id(
             cur,
             """INSERT INTO tb_rel_usuarios_cursos
@@ -892,7 +856,7 @@ def simular_tentativa_quiz(cur, usuario_id, quiz_info, condominio_id=None, torre
     partir dos acertos, respeitando quiz_info["nota_minima"].
     condominio_id/torre_id são nullable -- usuários comuns passam None.
     """
-    iniciado_em = fk.date_time_between(120, 1)
+    iniciado_em = fk.date_time_growth(120, 1)
     tentativa_id = fetch_id(
         cur,
         """INSERT INTO tb_tentativas_quiz
@@ -935,6 +899,32 @@ def simular_tentativa_quiz(cur, usuario_id, quiz_info, condominio_id=None, torre
 # 8. NOTIFICAÇÕES
 # ==============================================================================
 
+# Lembretes diários de reciclagem (tipo "motivacional") -- texto real usado
+# pelo app, não texto gerado.
+_MENSAGENS_MOTIVACIONAIS = [
+    "Cada atitude conta! Separe seus recicláveis e faça a diferença. ♻️",
+    "Reciclar hoje é cuidar do planeta amanhã. 🌱",
+    "Pequenas ações geram grandes mudanças. Que tal reciclar?",
+    "Seu reciclável pode ganhar uma nova vida. Separe corretamente!",
+    "Vamos juntos deixar o mundo mais sustentável? Comece reciclando!",
+    "Menos desperdício, mais consciência. Recicle!",
+    "O planeta agradece cada material que você encaminha para a reciclagem.",
+    "Que tal transformar seus resíduos em novas oportunidades? Recicle!",
+    "Uma embalagem separada hoje pode fazer parte de algo novo amanhã.",
+    "Sua atitude faz parte da mudança. Separe seus recicláveis!",
+    "Reciclar é simples e o impacto pode ser enorme. Vamos nessa?",
+    "Dê uma segunda chance aos materiais: recicle! ♻️",
+    "Hoje é um ótimo dia para fazer uma escolha mais sustentável.",
+    "Cada reciclável no lugar certo é um passo a mais para um futuro melhor.",
+    "Faça sua parte: separe, recicle e inspire outras pessoas!",
+    "Seu hábito pode inspirar uma comunidade inteira. Comece reciclando!",
+    "Vamos manter os materiais circulando e o desperdício diminuindo?",
+    "Mais reciclagem, menos desperdício. Juntos podemos fazer a diferença!",
+    "Não deixe a oportunidade passar: separe seus recicláveis hoje!",
+    "Uma pequena ação sua pode contribuir para uma grande mudança. Recicle!",
+]
+
+
 def criar_notificacoes_usuario(cur, usuario_id, qtd):
     tipos = ["seguranca", "motivacional", "lembrete_coleta", "aviso_conta"]
     titulos = {
@@ -945,14 +935,18 @@ def criar_notificacoes_usuario(cur, usuario_id, qtd):
     }
     for _ in range(qtd):
         tipo       = fk.random_element(tipos)
-        data_envio = fk.date_time_between(120, 0)
+        data_envio = fk.date_time_growth(120, 0)
+        corpo = (
+            fk.random_element(_MENSAGENS_MOTIVACIONAIS)
+            if tipo == "motivacional" else fk.sentence(10)
+        )
         cur.execute(
             """INSERT INTO tb_notificacoes
                    (usuario_id, titulo_mensagem, corpo_mensagem,
                     tipo_notificacao, data_envio)
                VALUES (%s, %s, %s, %s, %s)""",
             (
-                usuario_id, titulos[tipo], fk.sentence(10),
+                usuario_id, titulos[tipo], corpo,
                 tipo, data_envio,
             ),
         )
@@ -1001,5 +995,5 @@ def limpar_dados_banco(cur):
         "tb_usuarios",
     ]
     for tabela in tabelas:
-        cur.execute(f"TRUNCATE TABLE {tabela} CASCADE")
+        cur.execute(f"TRUNCATE TABLE {tabela} RESTART IDENTITY CASCADE")
     print("Banco limpo: dados removidos, estrutura mantida.")

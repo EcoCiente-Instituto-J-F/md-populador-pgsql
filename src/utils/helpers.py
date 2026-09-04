@@ -37,6 +37,13 @@ def get_connection():
     return conn
 
 
+def target_description():
+    """Descreve o destino da conexão sem expor senha -- usado em prompts de confirmação."""
+    if DSN:
+        return "conexão via ECOCIENTE_DSN"
+    return f"{DB_CONFIG.get('host')}:{DB_CONFIG.get('port')}/{DB_CONFIG.get('dbname')}"
+
+
 def fetch_id(cur, sql, params):
     """Executa um INSERT ... RETURNING <pk> e devolve o id gerado."""
     cur.execute(sql, params)
