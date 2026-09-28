@@ -23,7 +23,7 @@ class FakerBR:
             "Márcio","Priscila","Danilo","Letícia","Alexandre","Bianca","Cláudio","Débora","Laura",
         ]
         self._sobrenomes = [
-            "Lima","Costa","Mendes","Welker","Ferreira","Souza","Santos","Rocha","Alves","Hubertison","Desh"
+            "Lima","Costa","Mendes","Welker","Ferreira","Souza","Santos","Rocha","Alves","Hubertison","Desh",
             "Castro","Pereira","Nunes","Gomes","Oliveira","Barbosa","Martins","Cardoso",
             "Ramos","Torres","Pinto","Moreira","Freitas","Hugo","Correia","Azevedo",
             "Borges","Melo","Cunha","Ribeiro","Lil","Santana","Wada","Araújo","Lopes","Dias","Nascimento",
