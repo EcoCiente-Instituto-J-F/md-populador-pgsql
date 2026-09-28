@@ -6,35 +6,80 @@ import hashlib
 import json
 import os
 import re
-import psycopg2
-from datetime import timedelta
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
-from .helpers import fetch_id, call_procedure, DSN
+from psycopg2.extras import execute_values
+
+from .helpers import fetch_id
 from .faker_br import FakerBR
-from .unique_generator import cpf_unico, email_unico, hash_foto_unico
+from .unique_generator import cpf_unico, email_unico, hash_foto_unico, token_unico
 
 # ==============================================================================
 # CONFIGURAÇÃO / VOLUMETRIA
 # ==============================================================================
 
-SEED = 42  # fixo → massa reprodutível. Use None para variar a cada run.
+SEED = 42  # fixo → massa reprodutível. Use --seed N no main.py para variar.
 
-N_CONDOMINIOS_RESIDENCIAL   = 3
-N_CONDOMINIOS_COMERCIAL     = 2
-N_COOPERATIVAS              = 3
-N_USUARIOS_COMUM            = 10
+DIAS_HISTORICO = 365           # janela de histórico simulada (cadastros, postagens, DAU...)
+TZ = ZoneInfo("America/Sao_Paulo")
 
-TORRES_POR_RESIDENCIAL      = (2, 3)
-MORADORES_POR_TORRE         = (3, 5)
-USUARIOS_POR_COMERCIAL      = (5, 7)
+# Escala "medio" (~1.300 usuários, ~55 MB). main.py --escala multiplica
+# os N_* abaixo (leve 0.3 / medio 1 / pesado 3).
+N_CONDOMINIOS_RESIDENCIAL   = 18
+N_CONDOMINIOS_COMERCIAL     = 7
+N_COOPERATIVAS              = 10
+N_USUARIOS_COMUM            = 400
 
-PONTOS_COLETA_POR_COOPERATIVA = (2, 3)
-POSTAGENS_POR_OCUPANTE        = (0, 1)
-VOTOS_POR_POSTAGEM            = (5, 8)
-NOTIFICACOES_POR_USUARIO      = (1, 2)
-AGENDAMENTOS_POR_CONDOMINIO   = (1, 2)
-VISITAS_POR_AGENDAMENTO       = (2, 5)
-AULAS_POR_USUARIO             = (1, 2)
+TORRES_POR_RESIDENCIAL      = (2, 4)
+MORADORES_POR_TORRE         = (10, 16)
+USUARIOS_POR_COMERCIAL      = (25, 45)
+
+PONTOS_COLETA_POR_COOPERATIVA = (2, 5)
+VOTOS_POR_POSTAGEM            = (2, 9)
+NOTIFICACOES_POR_USUARIO      = (4, 15)
+AGENDAMENTOS_POR_CONDOMINIO   = (4, 8)
+VISITAS_POR_AGENDAMENTO       = (3, 8)
+TOKENS_API_POR_USUARIO        = (1, 3)
+
+# Perfis de engajamento: amarram postagens, cursos, quizzes, votos e DAU do
+# mesmo usuário -- quem posta mais também abre mais o app, vota mais etc.
+# abandono = chance de parar de usar o app em algum momento (churn usa
+# vida curta de 5–75 dias; os demais, 30–240 dias) -- dá curva de retenção.
+PERFIS = {
+    "power":   dict(peso=10, p_dia=0.70, postagens=(25, 50), cursos=(3, 6), conclusao=0.95, acerto=0.85, peso_voto=8.0, abandono=0.03),
+    "regular": dict(peso=35, p_dia=0.38, postagens=(6, 15),  cursos=(1, 4), conclusao=0.90, acerto=0.75, peso_voto=3.0, abandono=0.20),
+    "casual":  dict(peso=35, p_dia=0.12, postagens=(1, 5),   cursos=(0, 2), conclusao=0.75, acerto=0.62, peso_voto=1.0, abandono=0.55),
+    "churn":   dict(peso=20, p_dia=0.30, postagens=(0, 3),   cursos=(0, 1), conclusao=0.50, acerto=0.55, peso_voto=0.5, abandono=1.00),
+}
+
+# (nome, descrição, permite_reciclagem, cor, pontos_base, limite_pontos_diario,
+#  peso residencial, peso comercial, % de postagens que a comunidade aprova)
+CATEGORIAS = [
+    ("Papel",      "Papel e papelão em geral",          True,  "#1565C0", 10, 20, 20, 38, 84),
+    ("Plástico",   "Embalagens e materiais plásticos",  True,  "#F9A825", 10, 20, 30, 22, 82),
+    ("Vidro",      "Garrafas, potes e vidro em geral",  True,  "#2E7D32", 12, 24, 12,  6, 86),
+    ("Metal",      "Latas e metais recicláveis",        True,  "#757575", 15, 30, 10,  8, 85),
+    ("Orgânico",   "Resíduo orgânico / compostável",    True,  "#6D4C41",  5, 10, 22,  8, 64),
+    ("Eletrônico", "Lixo eletrônico (e-waste)",         True,  "#512DA8", 30, 30,  6, 18, 72),
+    ("Rejeito",    "Resíduo não reciclável",            False, "#212121",  1,  2,  3,  3, 25),
+]
+_META_CATEGORIA = {c[0]: c for c in CATEGORIAS}
+
+# Horários locais de uso do app (picos de manhã, almoço e noite).
+_PESOS_HORA = [1, 0, 0, 0, 0, 1, 3, 6, 8, 6, 5, 6, 8, 7, 5, 5, 5, 6, 8, 10, 10, 8, 5, 2]
+
+AGORA = datetime.now(timezone.utc)
+HOJE = AGORA.astimezone(TZ).date()
+
+
+def _semana_meio_ambiente():
+    """1–7 de junho mais recente dentro da janela: pico de engajamento proposital."""
+    ano = HOJE.year if date(HOJE.year, 6, 7) < HOJE else HOJE.year - 1
+    return date(ano, 6, 1), date(ano, 6, 7)
+
+
+CAMPANHA = _semana_meio_ambiente()
 
 
 def gerar_senha_segura(email_usuario: str) -> str:
@@ -59,6 +104,48 @@ def hash_senha(senha: str) -> str:
 
 fk  = FakerBR(seed=SEED)
 rng = random.Random(SEED)
+
+# usuario_id -> {"perfil", "inicio", "fim", "comercial"}: janela em que o
+# usuário existe/usa o app. Tudo que é datado (postagem, voto, aula, DAU)
+# cai dentro dela.
+USUARIOS = {}
+
+
+# ==============================================================================
+# 0. TEMPO E AMOSTRAGEM
+# ==============================================================================
+
+def sortear_perfil():
+    nomes = list(PERFIS)
+    return rng.choices(nomes, weights=[PERFIS[n]["peso"] for n in nomes])[0]
+
+
+def _peso_dia(dia, comercial):
+    """Peso relativo de um dia: fim de semana (↑ residencial, ↓ comercial) e campanha."""
+    peso = (0.35 if comercial else 1.25) if dia.weekday() >= 5 else 1.0
+    if CAMPANHA[0] <= dia <= CAMPANHA[1]:
+        peso *= 1.8
+    return peso
+
+
+def data_no_periodo(inicio, fim, comercial=False):
+    """datetime UTC entre inicio e fim, respeitando dia da semana, campanha e horário de pico."""
+    fim = max(inicio, min(fim, AGORA))
+    total = (fim - inicio).total_seconds()
+    for _ in range(20):
+        t = inicio + timedelta(seconds=rng.random() * total)
+        if rng.random() * 2.25 < _peso_dia(t.astimezone(TZ).date(), comercial):
+            break
+    local = t.astimezone(TZ)
+    hora = rng.choices(range(24), weights=_PESOS_HORA)[0]
+    t = local.replace(hour=hora, minute=rng.randint(0, 59), second=rng.randint(0, 59)).astimezone(timezone.utc)
+    return min(max(t, inicio), fim)
+
+
+def amostra_ponderada(itens, pesos, k):
+    """k itens distintos, com chance proporcional ao peso (Efraimidis–Spirakis)."""
+    chaves = sorted(((rng.random() ** (1.0 / p), i) for i, p in zip(itens, pesos)), reverse=True)
+    return [i for _, i in chaves[:k]]
 
 
 # ==============================================================================
@@ -176,20 +263,15 @@ def popular_status_agendamentos(cur):
 
 
 def popular_categorias_residuos(cur):
-    categorias = [
-        ("Papel",      "Papel e papelão em geral",           True,  "#1565C0"),
-        ("Plástico",   "Embalagens e materiais plásticos",   True,  "#F9A825"),
-        ("Vidro",      "Garrafas, potes e vidro em geral",   True,  "#2E7D32"),
-        ("Metal",      "Latas e metais recicláveis",         True,  "#757575"),
-        ("Orgânico",   "Resíduo orgânico / compostável",     True,  "#6D4C41"),
-        ("Eletrônico", "Lixo eletrônico (e-waste)",          True,  "#512DA8"),
-        ("Rejeito",    "Resíduo não reciclável",             False, "#212121"),
-    ]
+    """Insere as categorias, ou atualiza pontos/teto das que já existem de runs anteriores."""
     ids = {}
-    for nome, desc, permite, cor in categorias:
+    for nome, desc, permite, cor, pontos, limite, *_ in CATEGORIAS:
         cur.execute(
-            "SELECT id_categoria FROM tb_lkp_categorias_residuos WHERE nome_categoria = %s",
-            (nome,),
+            """UPDATE tb_lkp_categorias_residuos
+                  SET pontos_base = %s, limite_pontos_diario = %s
+                WHERE nome_categoria = %s
+            RETURNING id_categoria""",
+            (pontos, limite, nome),
         )
         row = cur.fetchone()
         if row:
@@ -198,9 +280,10 @@ def popular_categorias_residuos(cur):
         ids[nome] = fetch_id(
             cur,
             """INSERT INTO tb_lkp_categorias_residuos
-                   (nome_categoria, descricao_material, permite_reciclagem, cor_identificacao)
-               VALUES (%s, %s, %s, %s) RETURNING id_categoria""",
-            (nome, desc, permite, cor),
+                   (nome_categoria, descricao_material, permite_reciclagem, cor_identificacao,
+                    pontos_base, limite_pontos_diario)
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id_categoria""",
+            (nome, desc, permite, cor, pontos, limite),
         )
     return ids
 
@@ -321,49 +404,59 @@ def criar_endereco(cur):
     )
 
 
-def criar_usuario(cur, tipo_usuario_id, n_telefones=(1, 1)):
+def criar_usuario(cur, tipo_usuario_id, perfil=None, desde=None, comercial=False, pioneiro=False):
     """
-    Insere em tb_usuarios + tb_telefones. Retorna (usuario_id, nome).
+    Insere tb_enderecos + tb_usuarios + tb_telefones num único round trip
+    (CTEs de escrita) e registra o usuário em USUARIOS. Retorna (usuario_id, nome).
 
+    `desde`: data mínima de cadastro (ex.: morador não entra antes do condomínio existir).
+    `pioneiro`: cadastro nos primeiros 40% da janela (síndicos, cooperativas, admins).
     Não insere no subtipo -- chame criar_subtipo_sindico ou criar_morador
-    logo após, quando aplicável. "Usuário Comum", "Cooperativa" e
-    "Administrador" não têm tabela de subtipo.
+    logo após, quando aplicável.
     """
+    perfil      = perfil or sortear_perfil()
+    desde       = desde or AGORA - timedelta(days=DIAS_HISTORICO)
+    dias        = max(1, (AGORA - desde).days)
+    if pioneiro:
+        registro_em = fk.date_time_between(DIAS_HISTORICO, int(DIAS_HISTORICO * 0.6))
+    else:
+        registro_em = fk.date_time_growth(dias, 0, power=1.3)
+    fim = AGORA
+    if fk.boolean(round(PERFIS[perfil]["abandono"] * 100)):
+        vida = rng.randint(5, 75) if perfil == "churn" else rng.randint(30, 240)
+        fim = min(registro_em + timedelta(days=vida), AGORA)
+    ativo       = not (fim < AGORA and fk.boolean(40)) and fk.boolean(98)
+
     nome        = fk.name()
     email       = email_unico(fk, nome)
     senha_hash  = hash_senha(gerar_senha_segura(email))
-    nascimento  = fk.date_of_birth(18, 75)
-    cpf         = cpf_unico(fk)
-    avatar      = fk.url(path="avatares", ext="jpg") if fk.boolean(40) else None
-    ativo       = fk.boolean(95)
-    registro_em = fk.date_time_growth(900, 0)
-    endereco_id = criar_endereco(cur)
+    uf, cidade, cep, rua, numero = fk.address_tuple()
 
     usuario_id = fetch_id(
         cur,
-        """INSERT INTO tb_usuarios
-               (nome_usuario, email_usuario, senha_hash, data_nascimento, cpf,
-                url_avatar, ativo, registro_em, tipo_usuario_id, endereco_id)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-           RETURNING id_usuario""",
-        (nome, email, senha_hash, nascimento, cpf,
-         avatar, ativo, registro_em, tipo_usuario_id, endereco_id),
+        """WITH e AS (
+               INSERT INTO tb_enderecos (cep, estado, cidade, logradouro, numero, complemento)
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id_endereco
+           ), u AS (
+               INSERT INTO tb_usuarios
+                   (nome_usuario, email_usuario, senha_hash, data_nascimento, cpf,
+                    url_avatar, ativo, registro_em, tipo_usuario_id, endereco_id)
+               SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, id_endereco FROM e
+               RETURNING id_usuario
+           ), t AS (
+               INSERT INTO tb_telefones (usuario_id, numero_contato, tipo_telefone, ativo)
+               SELECT id_usuario, %s, %s, %s FROM u
+           )
+           SELECT id_usuario FROM u""",
+        (
+            cep, uf, cidade, rua, numero, fk.secondary_address(),
+            nome, email, senha_hash, fk.date_of_birth(18, 75), cpf_unico(fk),
+            fk.url(path="avatares", ext="jpg") if fk.boolean(40) else None,
+            ativo, registro_em, tipo_usuario_id,
+            fk.phone(), fk.random_element(["celular", "fixo", "whatsapp"]), fk.boolean(90),
+        ),
     )
-
-    qtd_tel = rng.randint(*n_telefones)
-    for _ in range(qtd_tel):
-        cur.execute(
-            """INSERT INTO tb_telefones
-                   (usuario_id, numero_contato, tipo_telefone, ativo)
-               VALUES (%s, %s, %s, %s)""",
-            (
-                usuario_id,
-                fk.phone(),
-                fk.random_element(["celular", "fixo", "whatsapp"]),
-                fk.boolean(90),
-            ),
-        )
-
+    USUARIOS[usuario_id] = dict(perfil=perfil, inicio=registro_em, fim=fim, comercial=comercial)
     return usuario_id, nome
 
 
@@ -394,7 +487,7 @@ def criar_condominio(cur, tipo_condominio_id, sindico_id, nome_fantasia, comerci
     endereco_id  = criar_endereco(cur)
     cnpj         = fk.cnpj() if comercial else (fk.cnpj() if fk.boolean(20) else None)
     codigo_acesso = proximo_codigo_acesso()
-    ativo        = fk.boolean(80)
+    ativo        = fk.boolean(92)
 
     return fetch_id(
         cur,
@@ -429,64 +522,52 @@ def criar_morador(cur, usuario_id, condominio_id):
     )
 
 
-def criar_vinculo_condominio(cur, usuario_id, condominio_id, aprovado_por_usuario_id=None):
+def criar_vinculo_condominio(cur, usuario_id, condominio_id, aprovado_por_usuario_id=None,
+                             nivel_confianca_id=None, aprovado=None):
     """
-    Cria o vínculo em tb_rel_usuarios_condominios com contadores de
-    confiança plausíveis (trust_score via fn_calcular_trust_score) --
-    recalcular_trust_scores() depois substitui pelos valores reais.
+    Cria o vínculo em tb_rel_usuarios_condominios com contadores zerados --
+    recalcular_trust_scores() preenche os valores reais depois das votações.
 
-    Retorna (id_usuario_condominio, aprovado): `aprovado` indica se esse
-    usuário pode votar em postagens do condomínio via
-    sp_processar_voto_postagem.
+    Retorna (id_usuario_condominio, pode_votar): pode_votar = aprovado e sem
+    data_saida, exatamente a condição que sp_processar_voto_postagem exige.
     """
-    data_entrada = fk.date_time_growth(700, 30)
-    aprovado     = fk.boolean(92)
-    saiu         = fk.boolean(8)
-    data_saida   = fk.date_time_between(29, 0) if saiu else None
-
-    postagens_validadas   = rng.randint(0, 15)
-    denuncias_realizadas  = rng.randint(0, 4)
-    denuncias_procedentes = rng.randint(0, denuncias_realizadas)
-    taxa_acerto_denuncias = (
-        round(100.0 * denuncias_procedentes / denuncias_realizadas, 2)
-        if denuncias_realizadas > 0 else None
-    )
-
-    cur.execute(
-        "SELECT fn_calcular_trust_score(%s, %s, %s)",
-        (postagens_validadas, denuncias_realizadas, denuncias_procedentes),
-    )
-    trust_score = cur.fetchone()[0]
+    u = USUARIOS[usuario_id]
+    data_entrada = min(u["inicio"] + timedelta(hours=rng.randint(1, 96)), AGORA)
+    aprovado     = fk.boolean(92) if aprovado is None else aprovado
+    saiu         = fk.boolean(5) and nivel_confianca_id is None
+    data_saida   = data_no_periodo(data_entrada, AGORA) if saiu else None
 
     usuario_condominio_id = fetch_id(
         cur,
         """INSERT INTO tb_rel_usuarios_condominios
                (usuario_id, condominio_id, data_entrada, data_saida,
-                aprovado, aprovado_por_usuario_id, trust_score,
+                aprovado, aprovado_por_usuario_id, nivel_confianca_id, trust_score,
                 postagens_validadas_sem_contestacao, denuncias_realizadas,
                 denuncias_procedentes, taxa_acerto_denuncias)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+           VALUES (%s, %s, %s, %s, %s, %s, COALESCE(%s, 1),
+                   fn_calcular_trust_score(0, 0, 0), 0, 0, 0, NULL)
            RETURNING id_usuario_condominio""",
         (usuario_id, condominio_id, data_entrada, data_saida,
-         aprovado, aprovado_por_usuario_id, trust_score,
-         postagens_validadas, denuncias_realizadas,
-         denuncias_procedentes, taxa_acerto_denuncias),
+         aprovado, aprovado_por_usuario_id, nivel_confianca_id),
     )
-    return usuario_condominio_id, aprovado
+    return usuario_condominio_id, aprovado and not saiu
 
 
 def recalcular_trust_scores(cur):
     """
     Chama sp_atualizar_trust_score para cada vínculo usuário x condomínio,
     recalculando trust_score/nivel_confianca a partir das postagens e
-    votos reais. Rodar depois de simular postagens e votos.
+    votos reais. Loop no servidor: 1 round trip em vez de 1 por vínculo.
     """
-    cur.execute("SELECT usuario_id, condominio_id FROM tb_rel_usuarios_condominios")
-    vinculos = cur.fetchall()
-    for usuario_id, condominio_id in vinculos:
-        call_procedure(
-            cur, "CALL sp_atualizar_trust_score(%s, %s)", (usuario_id, condominio_id)
-        )
+    cur.execute(
+        """DO $$
+           DECLARE r RECORD;
+           BEGIN
+               FOR r IN SELECT usuario_id, condominio_id FROM tb_rel_usuarios_condominios LOOP
+                   CALL sp_atualizar_trust_score(r.usuario_id, r.condominio_id);
+               END LOOP;
+           END $$"""
+    )
 
 
 # ==============================================================================
@@ -494,6 +575,8 @@ def recalcular_trust_scores(cur):
 # ==============================================================================
 
 def criar_cooperativa(cur, usuario_id):
+    """Retorna (cooperativa_id, nome, qualidade). `qualidade` (0.55–0.97) é
+    latente: move taxa de comparecimento e nota das avaliações da cooperativa."""
     endereco_id = criar_endereco(cur)
     nome        = fk.company()
     cooperativa_id = fetch_id(
@@ -505,10 +588,10 @@ def criar_cooperativa(cur, usuario_id):
            RETURNING id_cooperativa""",
         (
             fk.cnpj(), nome, fk.email(nome), fk.phone(),
-            fk.date_time_growth(900, 60), usuario_id, endereco_id,
+            USUARIOS[usuario_id]["inicio"], usuario_id, endereco_id,
         ),
     )
-    return cooperativa_id, nome
+    return cooperativa_id, nome, round(rng.uniform(0.55, 0.97), 2)
 
 
 def criar_ponto_coleta(cur, cooperativa_id, nome_cooperativa):
@@ -521,7 +604,10 @@ def criar_ponto_coleta(cur, cooperativa_id, nome_cooperativa):
                 horario_abertura, horario_fechamento, ativo)
            VALUES (%s, %s, %s, %s, %s, %s)
            RETURNING id_ponto_coleta""",
-        (nome_ponto, endereco_id, cooperativa_id, "08:00", "18:00", fk.boolean(95)),
+        (nome_ponto, endereco_id, cooperativa_id,
+         fk.random_element(["07:00", "08:00", "09:00"]),
+         fk.random_element(["17:00", "18:00", "20:00", "22:00"]),
+         fk.boolean(92)),
     )
 
 
@@ -552,98 +638,288 @@ def vincular_categorias_ponto_coleta(cur, ponto_coleta_id, categoria_ids_recicla
 
 
 # ==============================================================================
-# 5. POSTAGENS DE DESCARTE + MODERAÇÃO (VOTOS)
+# 5. POSTAGENS DE DESCARTE + MODERAÇÃO (VOTOS, JANELA 24H, LEDGER)
 # ==============================================================================
 
-def criar_postagem(cur, usuario_id, condominio_id, categoria_id, data_postagem,
-                    status_em_analise_id, torre_id=None):
-    # saldo_confianca nasce em 0 e status_validacao_id nasce em em_analise
-    # -- o DEFAULT da coluna é aprovada, mas toda postagem nova deve
-    # aguardar a comunidade votar (simular_votos_postagem/sp_processar_voto_postagem)
-    # antes de virar aprovada ou reprovada.
-    capturada_em = data_postagem - timedelta(minutes=rng.randint(1, 30))
-    hash_foto = hash_foto_unico(
-        f"{usuario_id}-{condominio_id}-{categoria_id}-{data_postagem.isoformat()}"
-    )
+def gerar_postagens(cur, ocupantes, votantes_por_condominio, categorias,
+                    status_em_analise_id, motivos_denuncia_ids):
+    """
+    Gera as postagens de todos os ocupantes e os votos da comunidade.
+    Postagens entram em lote; os votos vão para uma tabela temporária e são
+    processados por sp_processar_voto_postagem num loop no servidor (o
+    banco calcula peso, saldo e histerese da pontuação -- não o Python).
 
-    return fetch_id(
+    Cada postagem sorteia um veredito (aprovar/denunciar) conforme a
+    categoria e o perfil do dono; ~93% dos votos seguem o veredito.
+    Retorna (qtd_postagens, qtd_votos).
+    """
+    nomes_cat = [n for n in categorias]
+    postagens, meta = [], {}
+    for o in ocupantes:
+        u = USUARIOS[o["usuario_id"]]
+        perfil = PERFIS[u["perfil"]]
+        dias_ativos = max(1, (u["fim"] - u["inicio"]).days)
+        qtd = round(rng.randint(*perfil["postagens"]) * min(1.0, dias_ativos / 180))
+        pesos = [_META_CATEGORIA[n][7 if u["comercial"] else 6] for n in nomes_cat]
+        data_postagem = None
+        for _ in range(qtd):
+            nome_cat = rng.choices(nomes_cat, weights=pesos)[0]
+            # ~35% saem em rajada (vários itens descartados no mesmo dia) --
+            # é o que faz o teto diário de pontos da categoria aparecer.
+            if data_postagem and fk.boolean(35):
+                data_postagem = min(data_postagem + timedelta(minutes=rng.randint(1, 40)), u["fim"])
+            else:
+                data_postagem = data_no_periodo(u["inicio"], u["fim"], u["comercial"])
+            chance = _META_CATEGORIA[nome_cat][8] + {"power": 6, "churn": -12}.get(u["perfil"], 0)
+            aprovar = fk.boolean(chance)
+            # triagem automática (modelo fraco): acerta ~85%, confiança mais baixa quando erra
+            triagem_ok = fk.boolean(88) if aprovar else fk.boolean(30)
+            confianca = round(rng.uniform(70, 99) if triagem_ok == aprovar else rng.uniform(40, 80), 2)
+            hash_foto = hash_foto_unico(f"{o['usuario_id']}-{nome_cat}-{data_postagem.isoformat()}")
+            postagens.append((
+                o["usuario_id"], o["condominio_id"], o.get("torre_id"), categorias[nome_cat],
+                fk.url(path="postagens", ext="jpg"), hash_foto,
+                data_postagem - timedelta(seconds=rng.randint(20, 1800)), data_postagem,
+                status_em_analise_id, 0, triagem_ok, confianca,
+            ))
+            meta[hash_foto] = (o["usuario_id"], o["condominio_id"], data_postagem, aprovar)
+
+    # saldo_confianca nasce em 0 e status em_analise (o DEFAULT da coluna é
+    # aprovada, mas toda postagem nova aguarda a comunidade). data_limite_analise
+    # fica no DEFAULT now()+24h para a procedure aceitar os votos; o
+    # encerramento depois ajusta para data_postagem + 24h.
+    linhas = execute_values(
         cur,
         """INSERT INTO tb_postagens
-               (usuario_id, condominio_id, torre_id, categoria_id, url_foto,
-                hash_foto, capturada_em, data_postagem, status_validacao_id, saldo_confianca)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-           RETURNING id_postagem""",
-        (
-            usuario_id, condominio_id, torre_id, categoria_id,
-            fk.url(path="postagens", ext="jpg"), hash_foto,
-            capturada_em, data_postagem, status_em_analise_id, 0,
-        ),
+               (usuario_id, condominio_id, torre_id, categoria_id, url_foto, hash_foto,
+                capturada_em, data_postagem, status_validacao_id, saldo_confianca,
+                triagem_automatica_aprovada, triagem_automatica_confianca)
+           VALUES %s RETURNING id_postagem, hash_foto""",
+        postagens, page_size=1000, fetch=True,
+    )
+
+    votos = []
+    for postagem_id, hash_foto in linhas:
+        dono, condominio_id, data_postagem, aprovar = meta[hash_foto]
+        candidatos = [
+            v for v in votantes_por_condominio.get(condominio_id, [])
+            if v != dono and USUARIOS[v]["inicio"] <= data_postagem <= USUARIOS[v]["fim"]
+        ]
+        if not candidatos:
+            continue
+        qtd = min(rng.randint(*VOTOS_POR_POSTAGEM), len(candidatos))
+        votantes = amostra_ponderada(
+            candidatos, [PERFIS[USUARIOS[v]["perfil"]]["peso_voto"] for v in candidatos], qtd
+        )
+        minutos = sorted(rng.uniform(2, 23 * 60) for _ in votantes)
+        for usuario_id, minuto in zip(votantes, minutos):
+            segue = fk.boolean(93)
+            tipo = "aprovar" if aprovar == segue else "denunciar"
+            votos.append([
+                postagem_id, usuario_id, tipo,
+                fk.random_element(motivos_denuncia_ids) if tipo == "denunciar" else None,
+                fk.sentence(6) if fk.boolean(25) else None,
+                min(data_postagem + timedelta(minutes=minuto), AGORA),
+            ])
+
+    votos.sort(key=lambda v: (v[0], v[5]))
+    cur.execute(
+        """DROP TABLE IF EXISTS tmp_votos;
+           CREATE TEMP TABLE tmp_votos (
+               ordem INTEGER PRIMARY KEY, postagem_id INTEGER, usuario_id INTEGER,
+               tipo_voto VARCHAR(20), motivo_denuncia_id INTEGER,
+               comentario VARCHAR(255), votado_em TIMESTAMPTZ)"""
+    )
+    execute_values(cur, "INSERT INTO tmp_votos VALUES %s",
+                   [[i] + v for i, v in enumerate(votos)], page_size=5000)
+    lote = 5000
+    for ini in range(0, len(votos), lote):
+        print(f"      votos {ini + 1}-{min(ini + lote, len(votos))} de {len(votos)}", flush=True)
+        cur.execute(
+            f"""DO $$
+                DECLARE r RECORD;
+                BEGIN
+                    FOR r IN SELECT * FROM tmp_votos
+                              WHERE ordem >= {ini} AND ordem < {ini + lote} ORDER BY ordem LOOP
+                        CALL sp_processar_voto_postagem(r.postagem_id, r.usuario_id, r.tipo_voto,
+                                                        r.motivo_denuncia_id, r.comentario);
+                    END LOOP;
+                END $$"""
+        )
+    # votado_em tem DEFAULT now(); traz de volta para a janela real da postagem.
+    cur.execute(
+        """UPDATE tb_rel_votos_postagens v
+              SET votado_em = t.votado_em
+             FROM tmp_votos t
+            WHERE v.postagem_id = t.postagem_id AND v.usuario_id = t.usuario_id;
+           DROP TABLE tmp_votos"""
+    )
+    return len(postagens), len(votos)
+
+
+def encerrar_janelas_postagens(cur, seed):
+    """
+    Fecha a janela de 24h de cada postagem via sp_encerrar_janela_postagem
+    (>=0 aprovada, -1..-4 em_analise, <=-5 reprovada) e, para ~60% das que
+    ficaram em_analise há mais de 3 dias, simula a decisão manual do síndico
+    via sp_decidir_postagem_analise. Postagens das últimas 24h continuam
+    abertas (fila de moderação). As procedures carimbam resolvido_em = now();
+    aqui ele volta para a data real do fechamento.
+    """
+    cur.execute(
+        """UPDATE tb_postagens SET data_limite_analise = data_postagem + INTERVAL '24 hours';
+
+           DO $$
+           DECLARE r RECORD;
+           BEGIN
+               FOR r IN SELECT id_postagem FROM tb_postagens
+                         WHERE resolvido_em IS NULL AND data_limite_analise <= now()
+                         ORDER BY id_postagem LOOP
+                   CALL sp_encerrar_janela_postagem(r.id_postagem);
+               END LOOP;
+           END $$;
+
+           UPDATE tb_postagens SET resolvido_em = data_limite_analise WHERE resolvido_em IS NOT NULL;"""
+    )
+    cur.execute("SELECT setseed(%s)", ((seed % 1000) / 1000.0,))
+    cur.execute(
+        """DO $$
+           DECLARE r RECORD;
+           BEGIN
+               FOR r IN SELECT p.id_postagem
+                          FROM tb_postagens p
+                          JOIN tb_lkp_status_validacoes_postagens s
+                            ON s.id_status_validacao = p.status_validacao_id
+                         WHERE s.nome_status = 'em_analise'
+                           AND p.data_limite_analise < now() - INTERVAL '3 days'
+                         ORDER BY p.id_postagem LOOP
+                   IF random() < 0.6 THEN
+                       CALL sp_decidir_postagem_analise(r.id_postagem, random() < 0.45);
+                       UPDATE tb_postagens
+                          SET resolvido_em = data_limite_analise
+                                             + make_interval(hours => 1 + floor(random() * 72)::INT)
+                        WHERE id_postagem = r.id_postagem;
+                   END IF;
+               END LOOP;
+           END $$"""
     )
 
 
-def simular_votos_postagem(cur, postagem_id, usuario_dono_id, votantes_do_condominio,
-                            motivos_denuncia_ids):
+def registrar_ledger_pontos(cur, seed):
     """
-    Simula VOTOS_POR_POSTAGEM votos via sp_processar_voto_postagem, que
-    calcula o peso do voto, atualiza saldo_confianca e resolve o status da
-    postagem ao atingir os limiares (+5 aprova / -5 reprova). votantes_do_condominio
-    deve conter só usuario_ids com vínculo aprovado=TRUE nesse condomínio.
-
-    Cada postagem sorteia um veredito predominante (65% aprovar / 35%
-    denunciar) e 92% dos votos seguem esse veredito -- a maioria das
-    postagens resolve de forma decisiva (mais aprovadas que reprovadas,
-    mas reprovada acontece de verdade), e uma minoria fica em_analise por
-    saldo insuficiente, como esperado num sistema real.
+    Popula tb_movimentacoes_pontos como a API faria:
+      - CREDITO provisório na postagem, valor de fn_pontos_disponiveis_postagem
+        (respeita o teto diário -- com teto estourado não há crédito);
+      - ESTORNO quando a pontuação ficou inativa (saldo <= -5 / reprovada);
+      - RESTAURACAO quando caiu e depois voltou a ativa;
+      - CREDITO de quiz na 1a tentativa aprovada de cada usuário x quiz.
+    Só postagens já resolvidas são reconciliadas; as abertas mantêm a flag
+    pontuacao_reconciliacao_pendente. ~3% dos eventos recentes ficam sem
+    sincronizar no Redis (fila de retry).
     """
-    candidatos = [uid for uid in votantes_do_condominio if uid != usuario_dono_id]
-    if not candidatos:
-        return
+    cur.execute(
+        """DO $$
+           DECLARE r RECORD; v_pontos INTEGER;
+           BEGIN
+               FOR r IN SELECT id_postagem, usuario_id, condominio_id, torre_id, categoria_id, data_postagem
+                          FROM tb_postagens ORDER BY data_postagem LOOP
+                   v_pontos := fn_pontos_disponiveis_postagem(r.usuario_id, r.categoria_id, r.data_postagem);
+                   IF v_pontos > 0 THEN
+                       INSERT INTO tb_movimentacoes_pontos
+                           (usuario_id, condominio_id, torre_id, categoria_id, origem_tipo, postagem_id,
+                            tipo_movimentacao, pontos, idempotency_key, ocorrido_em)
+                       VALUES (r.usuario_id, r.condominio_id, r.torre_id, r.categoria_id, 'POSTAGEM',
+                               r.id_postagem, 'CREDITO', v_pontos,
+                               'POSTAGEM:' || r.id_postagem || ':CREDITO', r.data_postagem);
+                   END IF;
+               END LOOP;
+           END $$;
 
-    veredito = "aprovar" if fk.boolean(60) else "denunciar"
-    contrario = "denunciar" if veredito == "aprovar" else "aprovar"
+           INSERT INTO tb_movimentacoes_pontos
+               (usuario_id, condominio_id, torre_id, categoria_id, origem_tipo, postagem_id,
+                tipo_movimentacao, pontos, movimentacao_referencia_id, idempotency_key, ocorrido_em)
+           SELECT m.usuario_id, m.condominio_id, m.torre_id, m.categoria_id, 'POSTAGEM', m.postagem_id,
+                  'ESTORNO', m.pontos, m.id_movimentacao,
+                  'POSTAGEM:' || m.postagem_id || ':ESTORNO:1',
+                  LEAST(p.data_postagem + INTERVAL '12 hours', p.resolvido_em)
+             FROM tb_movimentacoes_pontos m
+             JOIN tb_postagens p ON p.id_postagem = m.postagem_id
+            WHERE m.tipo_movimentacao = 'CREDITO'
+              AND p.resolvido_em IS NOT NULL
+              AND (p.pontuacao_ativa = FALSE OR p.pontuacao_reconciliacao_pendente);
 
-    minimo = min(VOTOS_POR_POSTAGEM[0], len(candidatos))
-    maximo = min(VOTOS_POR_POSTAGEM[1], len(candidatos))
-    qtd_votos = rng.randint(minimo, maximo)
-    if qtd_votos == 0:
-        return
+           INSERT INTO tb_movimentacoes_pontos
+               (usuario_id, condominio_id, torre_id, categoria_id, origem_tipo, postagem_id,
+                tipo_movimentacao, pontos, movimentacao_referencia_id, idempotency_key, ocorrido_em)
+           SELECT m.usuario_id, m.condominio_id, m.torre_id, m.categoria_id, 'POSTAGEM', m.postagem_id,
+                  'RESTAURACAO', m.pontos, m.id_movimentacao,
+                  'POSTAGEM:' || m.postagem_id || ':RESTAURACAO:1', p.resolvido_em
+             FROM tb_movimentacoes_pontos m
+             JOIN tb_postagens p ON p.id_postagem = m.postagem_id
+            WHERE m.tipo_movimentacao = 'CREDITO'
+              AND p.resolvido_em IS NOT NULL
+              AND p.pontuacao_ativa AND p.pontuacao_reconciliacao_pendente;
 
-    votantes = fk.random_elements(candidatos, length=qtd_votos, unique=True)
-    for usuario_id in votantes:
-        tipo_voto = veredito if fk.boolean(95) else contrario
-        motivo_id = fk.random_element(motivos_denuncia_ids) if tipo_voto == "denunciar" else None
-        comentario = fk.sentence(6) if fk.boolean(30) else None
-        try:
-            call_procedure(
-                cur,
-                "CALL sp_processar_voto_postagem(%s, %s, %s, %s, %s)",
-                (postagem_id, usuario_id, tipo_voto, motivo_id, comentario),
-            )
-        except psycopg2.Error:
-            # postagem já foi resolvida por um voto anterior desta rodada
-            break
+           UPDATE tb_postagens SET pontuacao_reconciliacao_pendente = FALSE
+            WHERE resolvido_em IS NOT NULL AND pontuacao_reconciliacao_pendente;
+
+           INSERT INTO tb_movimentacoes_pontos
+               (usuario_id, condominio_id, torre_id, origem_tipo, tentativa_quiz_id,
+                tipo_movimentacao, pontos, idempotency_key, ocorrido_em)
+           SELECT DISTINCT ON (t.usuario_id, t.quiz_id)
+                  t.usuario_id, t.condominio_id, t.torre_id, 'QUIZ', t.id_tentativa,
+                  'CREDITO', q.pontos_recompensa, 'QUIZ:' || t.id_tentativa || ':CREDITO', t.concluido_em
+             FROM tb_tentativas_quiz t
+             JOIN tb_quizzes q ON q.id_quiz = t.quiz_id
+            WHERE t.aprovado
+            ORDER BY t.usuario_id, t.quiz_id, t.concluido_em;"""
+    )
+    cur.execute("SELECT setseed(%s)", ((seed % 997) / 997.0,))
+    cur.execute(
+        """UPDATE tb_movimentacoes_pontos
+              SET redis_sincronizado = TRUE,
+                  redis_sincronizado_em = ocorrido_em + make_interval(secs => 0.2 + random() * 5),
+                  tentativas_sync_redis = CASE WHEN random() < 0.04 THEN 2 ELSE 1 END
+            WHERE ocorrido_em < now() - INTERVAL '2 days' OR random() < 0.9;
+
+           UPDATE tb_movimentacoes_pontos
+              SET tentativas_sync_redis = 1 + floor(random() * 5)::INT,
+                  ultimo_erro_redis = (ARRAY['Connection reset by peer',
+                                             'READONLY You can''t write against a read only replica.',
+                                             'Timeout after 2000 ms'])[1 + floor(random() * 3)::INT]
+            WHERE NOT redis_sincronizado AND random() < 0.5;"""
+    )
 
 
 # ==============================================================================
 # 6. AGENDAMENTOS, VISITAS, RECORRÊNCIAS E AVALIAÇÕES
 # ==============================================================================
 
-def criar_agendamento(cur, condominio_id, cooperativa_id,
-                      status_agendamento_id, recorrente):
-    # possui_recorrencia é setado direto aqui -- não há trigger que
-    # recalcule a partir de tb_rel_recorrencias_agendamentos.
-    data_inicio = fk.date_time_between(180, 0)
-    data_fim    = data_inicio + timedelta(hours=2)
-    return fetch_id(
+def criar_agendamento(cur, condominio_id, cooperativa_id, status_ids, data_inicio,
+                      status_final, recorrente):
+    """
+    Insere como "Agendado" e, se o status final for outro, faz o UPDATE --
+    a trigger de auditoria registra a transição como no app.
+    possui_recorrencia é setado direto aqui -- não há trigger que
+    recalcule a partir de tb_rel_recorrencias_agendamentos.
+    """
+    data_fim = data_inicio + timedelta(hours=rng.choice([1, 2, 3]))
+    agendamento_id = fetch_id(
         cur,
         """INSERT INTO tb_agendamentos_coletas
                (condominio_id, cooperativa_id, status_agendamento_id,
                 data_inicio, data_fim, possui_recorrencia)
            VALUES (%s, %s, %s, %s, %s, %s)
            RETURNING id_agendamento_coleta""",
-        (condominio_id, cooperativa_id, status_agendamento_id,
+        (condominio_id, cooperativa_id, status_ids["Agendado"],
          data_inicio, data_fim, recorrente),
     )
+    if status_final != "Agendado":
+        cur.execute(
+            "UPDATE tb_agendamentos_coletas SET status_agendamento_id = %s WHERE id_agendamento_coleta = %s",
+            (status_ids[status_final], agendamento_id),
+        )
+    return agendamento_id
 
 
 def criar_recorrencia(cur, agendamento_coleta_id, dia_semana_id):
@@ -655,41 +931,40 @@ def criar_recorrencia(cur, agendamento_coleta_id, dia_semana_id):
     )
 
 
-def criar_visita(cur, agendamento_coleta_id, data_visita):
+def criar_visita(cur, agendamento_coleta_id, data_visita, foi_realizada=False,
+                 houve_confirmacao=False, confirmado_em=None, observacao=None):
     return fetch_id(
         cur,
         """INSERT INTO tb_visitas_coletas
                (agendamento_coleta_id, data_visita,
                 foi_realizada, houve_confirmacao, confirmado_em, observacao)
-           VALUES (%s, %s, FALSE, FALSE, NULL, NULL)
+           VALUES (%s, %s, %s, %s, %s, %s)
            RETURNING id_visita_coleta""",
-        (agendamento_coleta_id, data_visita),
+        (agendamento_coleta_id, data_visita, foi_realizada,
+         houve_confirmacao, confirmado_em, observacao),
     )
 
 
-def confirmar_visita(cur, visita_id, confirmou, observacao=None):
-    cur.execute(
-        """UPDATE tb_visitas_coletas
-           SET foi_realizada = %s,
-               houve_confirmacao = TRUE,
-               confirmado_em = now(),
-               observacao = %s
-           WHERE id_visita_coleta = %s""",
-        (confirmou, observacao, visita_id),
-    )
-
-
-def criar_avaliacao_visita(cur, visita_coleta_id, usuario_avaliador_id):
+def criar_avaliacao_visita(cur, visita_coleta_id, usuario_avaliador_id, qualidade,
+                           foi_realizada, data_visita):
+    """Nota puxada pela qualidade da cooperativa e por a coleta ter acontecido."""
+    base = 1 + 4 * qualidade if foi_realizada else 1.6
+    nota = min(5, max(1, round(rng.gauss(base, 0.8))))
+    comentarios = {
+        5: "Coleta pontual e equipe muito educada.",
+        4: "Coleta ok, pequeno atraso.",
+        3: "Atendeu, mas deixou parte do material.",
+        2: "Atrasou bastante e não avisou.",
+        1: "Não compareceu no horário combinado.",
+    }
     cur.execute(
         """INSERT INTO tb_avaliacoes_visitas_coletas
                (visita_coleta_id, usuario_avaliador_id, nota, comentario, avaliado_em)
            VALUES (%s, %s, %s, %s, %s)""",
         (
-            visita_coleta_id,
-            usuario_avaliador_id,
-            rng.randint(1, 5),
-            fk.sentence(6) if fk.boolean(60) else None,
-            fk.date_time_between(30, 0),
+            visita_coleta_id, usuario_avaliador_id, nota,
+            comentarios[nota] if fk.boolean(60) else None,
+            min(data_visita + timedelta(hours=rng.randint(1, 72)), AGORA),
         ),
     )
 
@@ -723,10 +998,8 @@ def popular_cursos_e_aulas(cur):
 
     cursos_ids = {}
     aulas_por_curso = {}
-    total_cursos = len(curriculo["cursos"])
-    for i, curso in enumerate(curriculo["cursos"], start=1):
+    for curso in curriculo["cursos"]:
         titulo = curso["titulo_curso"]
-        print(f"      curso {i}/{total_cursos}: {titulo}", flush=True)
         cur.execute("SELECT id_curso FROM tb_cursos WHERE titulo_curso = %s", (titulo,))
         row = cur.fetchone()
         if row:
@@ -748,16 +1021,14 @@ def popular_cursos_e_aulas(cur):
             aulas_por_curso[titulo] = existentes
             continue
 
-        ids_aula = []
-        for aula in sorted(curso["aulas"], key=lambda a: a["ordem"]):
-            aula_id = fetch_id(
-                cur,
-                """INSERT INTO tb_aulas (curso_id, titulo_aula, conteudo_aula, ordem)
-                   VALUES (%s, %s, %s, %s) RETURNING id_aula""",
-                (curso_id, aula["titulo_aula"], aula["conteudo_aula"], aula["ordem"]),
-            )
-            ids_aula.append(aula_id)
-        aulas_por_curso[titulo] = ids_aula
+        aulas = sorted(curso["aulas"], key=lambda a: a["ordem"])
+        linhas = execute_values(
+            cur,
+            "INSERT INTO tb_aulas (curso_id, titulo_aula, conteudo_aula, ordem) VALUES %s RETURNING id_aula",
+            [(curso_id, a["titulo_aula"], a["conteudo_aula"], a["ordem"]) for a in aulas],
+            fetch=True,
+        )
+        aulas_por_curso[titulo] = [r[0] for r in linhas]
 
     return cursos_ids, aulas_por_curso
 
@@ -787,7 +1058,8 @@ def popular_quizzes(cur, cursos_ids, aulas_por_curso):
             quiz_id, nota_minima = row
         else:
             nota_minima = 70
-            pontos_recompensa = len(quiz["perguntas"]) * 2  # sempre > pontos_base (10) das categorias
+            # pontos_recompensa precisa superar o maior pontos_base de categoria (30)
+            pontos_recompensa = 25 + len(quiz["perguntas"]) * 2
             quiz_id = fetch_id(
                 cur,
                 """INSERT INTO tb_quizzes
@@ -818,17 +1090,14 @@ def popular_quizzes(cur, cursos_ids, aulas_por_curso):
                        VALUES (%s, %s, %s) RETURNING id_pergunta""",
                     (quiz_id, pergunta["enunciado"], ordem),
                 )
-                alt_ids = []
-                for alt in pergunta["alternativas"]:
-                    alt_id = fetch_id(
-                        cur,
-                        """INSERT INTO tb_alternativas_quiz
-                               (pergunta_id, texto_alternativa, correta)
-                           VALUES (%s, %s, %s) RETURNING id_alternativa""",
-                        (pergunta_id, alt["texto"], alt["correta"]),
-                    )
-                    alt_ids.append((alt_id, alt["correta"]))
-                perguntas.append((pergunta_id, alt_ids))
+                linhas = execute_values(
+                    cur,
+                    """INSERT INTO tb_alternativas_quiz (pergunta_id, texto_alternativa, correta)
+                       VALUES %s RETURNING id_alternativa, correta""",
+                    [(pergunta_id, alt["texto"], alt["correta"]) for alt in pergunta["alternativas"]],
+                    fetch=True,
+                )
+                perguntas.append((pergunta_id, [tuple(r) for r in linhas]))
 
         quizzes_por_aula[aula_id] = {
             "quiz_id": quiz_id,
@@ -839,89 +1108,108 @@ def popular_quizzes(cur, cursos_ids, aulas_por_curso):
     return quizzes_por_aula
 
 
-def matricular_usuario_em_aulas(cur, usuario_id, lista_aula_ids):
+def simular_trilhas(cur, usuarios_ensino, ocupante_por_usuario, aulas_por_curso, quizzes_por_aula):
     """
-    Matricula o usuário em cada aula e, para ~55% delas, marca conclusão.
-    Retorna a lista de aula_ids concluídas.
+    Cada usuário escolhe N cursos (conforme o perfil) e avança aula a aula,
+    em ordem; ao não concluir uma aula, abandona o curso -- gera um funil
+    de conclusão real por curso. Quem conclui a última aula de um curso com
+    quiz faz a tentativa (e, se reprovar, ~55% tentam de novo).
+    Retorna (qtd_matriculas, qtd_tentativas).
     """
-    progresso = []
-    for aula_id in lista_aula_ids:
-        vai_concluir = fk.boolean(55)
-        data_inicio  = fk.date_time_growth(180, 1)
-        uc_id = fetch_id(
-            cur,
-            """INSERT INTO tb_rel_usuarios_cursos
-                   (usuario_id, aula_id, concluido, data_inicio, data_conclusao)
-               VALUES (%s, %s, FALSE, %s, NULL)
-               RETURNING id_usuario_curso""",
-            (usuario_id, aula_id, data_inicio),
-        )
-        progresso.append((uc_id, aula_id, vai_concluir, data_inicio))
+    cursos = list(aulas_por_curso.values())
+    matriculas, respostas, qtd_tentativas = [], [], 0
 
-    aulas_concluidas = []
-    for uc_id, aula_id, vai_concluir, data_inicio in progresso:
-        if not vai_concluir:
-            continue
-        data_conclusao = data_inicio + timedelta(days=rng.randint(1, 14))
-        cur.execute(
-            """UPDATE tb_rel_usuarios_cursos
-               SET concluido = TRUE, data_conclusao = %s
-               WHERE id_usuario_curso = %s""",
-            (data_conclusao, uc_id),
-        )
-        aulas_concluidas.append(aula_id)
+    for usuario_id in usuarios_ensino:
+        u = USUARIOS[usuario_id]
+        perfil = PERFIS[u["perfil"]]
+        ocupante = ocupante_por_usuario.get(usuario_id) or {}
+        qtd_cursos = rng.randint(*perfil["cursos"])
+        for aulas in rng.sample(cursos, min(qtd_cursos, len(cursos))):
+            cursor = data_no_periodo(u["inicio"], u["fim"], u["comercial"])
+            concluiu_tudo = True
+            for aula_id in aulas:
+                inicio = cursor
+                concluiu = fk.boolean(round(perfil["conclusao"] * 100))
+                conclusao = inicio + timedelta(minutes=rng.randint(8, 60 * 24 * 3))
+                if conclusao > u["fim"]:
+                    concluiu = False
+                matriculas.append((usuario_id, aula_id, concluiu, inicio, conclusao if concluiu else None))
+                if not concluiu:
+                    concluiu_tudo = False
+                    break
+                cursor = conclusao + timedelta(hours=rng.randint(1, 24 * 6))
+                if cursor > u["fim"]:
+                    concluiu_tudo = aula_id == aulas[-1]
+                    break
 
-    return aulas_concluidas
+            quiz = quizzes_por_aula.get(aulas[-1])
+            if concluiu_tudo and quiz:
+                acerto = perfil["acerto"]
+                quando = min(conclusao + timedelta(minutes=rng.randint(1, 600)), AGORA)
+                for _ in range(2):
+                    aprovado, quando = _tentativa_quiz(
+                        cur, usuario_id, quiz, acerto, quando, respostas,
+                        ocupante.get("condominio_id"), ocupante.get("torre_id"),
+                    )
+                    qtd_tentativas += 1
+                    if aprovado or not fk.boolean(55):
+                        break
+                    acerto = min(0.95, acerto + 0.1)
+                    quando = min(quando + timedelta(days=rng.randint(1, 10)), AGORA)
+
+    execute_values(
+        cur,
+        """INSERT INTO tb_rel_usuarios_cursos
+               (usuario_id, aula_id, concluido, data_inicio, data_conclusao) VALUES %s""",
+        matriculas, page_size=5000,
+    )
+    execute_values(
+        cur,
+        """INSERT INTO tb_rel_respostas_tentativas_quiz
+               (tentativa_id, pergunta_id, alternativa_escolhida_id, correta) VALUES %s""",
+        respostas, page_size=5000,
+    )
+    return len(matriculas), qtd_tentativas
 
 
-def simular_tentativa_quiz(cur, usuario_id, quiz_info, condominio_id=None, torre_id=None):
+def _tentativa_quiz(cur, usuario_id, quiz_info, acerto, iniciado_em, respostas,
+                    condominio_id=None, torre_id=None):
     """
-    Simula uma tentativa completa de um quiz: responde cada pergunta
-    (acertando com ~70% de chance) e fecha com nota/aprovado calculados a
-    partir dos acertos, respeitando quiz_info["nota_minima"].
-    condominio_id/torre_id são nullable -- usuários comuns passam None.
+    Uma tentativa: responde cada pergunta (acerta com prob. `acerto`), grava
+    a tentativa já fechada e acumula as respostas em `respostas` para o
+    insert em lote. ~5% são abandonadas no meio (nota/concluido_em nulos).
+    Retorna (aprovado, concluido_em).
     """
-    iniciado_em = fk.date_time_growth(120, 1)
+    perguntas = quiz_info["perguntas"]
+    abandonou = fk.boolean(5)
+    respondidas = perguntas[: rng.randint(1, len(perguntas) - 1)] if abandonou and len(perguntas) > 1 else perguntas
+
+    escolhas, acertos = [], 0
+    for pergunta_id, alternativas in respondidas:
+        corretas = [aid for aid, correta in alternativas if correta]
+        erradas  = [aid for aid, correta in alternativas if not correta]
+        acertou = fk.boolean(round(acerto * 100)) or not erradas
+        escolhas.append((pergunta_id, fk.random_element(corretas if acertou else erradas), acertou))
+        acertos += acertou
+
+    concluido_em = None if abandonou else min(iniciado_em + timedelta(minutes=rng.randint(3, 25)), AGORA)
+    nota = None if abandonou else round(100.0 * acertos / len(perguntas), 2)
+    aprovado = nota is not None and nota >= quiz_info["nota_minima"]
+
     tentativa_id = fetch_id(
         cur,
         """INSERT INTO tb_tentativas_quiz
-               (usuario_id, quiz_id, condominio_id, torre_id, iniciado_em)
-           VALUES (%s, %s, %s, %s, %s) RETURNING id_tentativa""",
-        (usuario_id, quiz_info["quiz_id"], condominio_id, torre_id, iniciado_em),
+               (usuario_id, quiz_id, condominio_id, torre_id, nota, aprovado, iniciado_em, concluido_em)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id_tentativa""",
+        (usuario_id, quiz_info["quiz_id"], condominio_id, torre_id,
+         nota, aprovado, iniciado_em, concluido_em),
     )
-
-    perguntas = quiz_info["perguntas"]
-    acertos = 0
-    for pergunta_id, alternativas in perguntas:
-        corretas = [aid for aid, correta in alternativas if correta]
-        erradas  = [aid for aid, correta in alternativas if not correta]
-        vai_acertar = fk.boolean(70) or not erradas
-        alt_escolhida = fk.random_element(corretas if vai_acertar else erradas)
-        acertou = alt_escolhida in corretas
-
-        cur.execute(
-            """INSERT INTO tb_rel_respostas_tentativas_quiz
-                   (tentativa_id, pergunta_id, alternativa_escolhida_id, correta)
-               VALUES (%s, %s, %s, %s)""",
-            (tentativa_id, pergunta_id, alt_escolhida, acertou),
-        )
-        if acertou:
-            acertos += 1
-
-    total = len(perguntas)
-    nota = round(100.0 * acertos / total, 2) if total else 0.0
-    aprovado = nota >= quiz_info["nota_minima"]
-    concluido_em = iniciado_em + timedelta(minutes=rng.randint(3, 25))
-    cur.execute(
-        """UPDATE tb_tentativas_quiz
-           SET nota = %s, aprovado = %s, concluido_em = %s
-           WHERE id_tentativa = %s""",
-        (nota, aprovado, concluido_em, tentativa_id),
-    )
+    respostas.extend((tentativa_id, p, a, c) for p, a, c in escolhas)
+    return aprovado, concluido_em or iniciado_em
 
 
 # ==============================================================================
-# 8. NOTIFICAÇÕES
+# 8. NOTIFICAÇÕES E TOKENS DE API
 # ==============================================================================
 
 # Lembretes diários de reciclagem (tipo "motivacional") -- texto real usado
@@ -949,32 +1237,140 @@ _MENSAGENS_MOTIVACIONAIS = [
     "Uma pequena ação sua pode contribuir para uma grande mudança. Recicle!",
 ]
 
+_NOTIFICACOES = {
+    "seguranca":       ("Alerta de segurança", ["Novo acesso à sua conta detectado.",
+                                                "Sua senha foi alterada com sucesso."]),
+    "motivacional":    ("Continue reciclando!", _MENSAGENS_MOTIVACIONAIS),
+    "lembrete_coleta": ("Coleta se aproximando", ["A coleta seletiva do seu condomínio é amanhã.",
+                                                  "Separe os recicláveis: a cooperativa passa hoje."]),
+    "aviso_conta":     ("Atualização da sua conta", ["Sua postagem foi validada pela comunidade.",
+                                                     "Você subiu no ranking do condomínio!",
+                                                     "Novo curso disponível na trilha EcoCiente."]),
+}
 
-def criar_notificacoes_usuario(cur, usuario_id, qtd):
-    tipos = ["seguranca", "motivacional", "lembrete_coleta", "aviso_conta"]
-    titulos = {
-        "seguranca":       "Alerta de segurança",
-        "motivacional":    "Continue reciclando!",
-        "lembrete_coleta": "Coleta se aproximando",
-        "aviso_conta":     "Atualização da sua conta",
-    }
-    for _ in range(qtd):
-        tipo       = fk.random_element(tipos)
-        data_envio = fk.date_time_growth(120, 0)
-        corpo = (
-            fk.random_element(_MENSAGENS_MOTIVACIONAIS)
-            if tipo == "motivacional" else fk.sentence(10)
-        )
-        cur.execute(
-            """INSERT INTO tb_notificacoes
-                   (usuario_id, titulo_mensagem, corpo_mensagem,
-                    tipo_notificacao, data_envio)
-               VALUES (%s, %s, %s, %s, %s)""",
-            (
-                usuario_id, titulos[tipo], corpo,
-                tipo, data_envio,
-            ),
-        )
+
+def popular_notificacoes(cur, usuario_ids):
+    """Notificações seguem chegando depois que o usuário some -- como na vida real."""
+    linhas = []
+    for usuario_id in usuario_ids:
+        u = USUARIOS[usuario_id]
+        for _ in range(rng.randint(*NOTIFICACOES_POR_USUARIO)):
+            tipo = rng.choices(list(_NOTIFICACOES), weights=[1, 5, 3, 3])[0]
+            titulo, corpos = _NOTIFICACOES[tipo]
+            linhas.append((usuario_id, titulo, rng.choice(corpos), tipo,
+                           data_no_periodo(u["inicio"], AGORA, u["comercial"])))
+    execute_values(
+        cur,
+        """INSERT INTO tb_notificacoes
+               (usuario_id, titulo_mensagem, corpo_mensagem, tipo_notificacao, data_envio) VALUES %s""",
+        linhas, page_size=5000,
+    )
+    return len(linhas)
+
+
+def popular_autenticacoes_api(cur, usuario_ids):
+    linhas = []
+    for usuario_id in usuario_ids:
+        u = USUARIOS[usuario_id]
+        for _ in range(rng.randint(*TOKENS_API_POR_USUARIO)):
+            linhas.append((usuario_id, token_unico(), "Bearer",
+                           data_no_periodo(u["inicio"], u["fim"], u["comercial"]),
+                           rng.choice([3600, 86400, 604800])))
+    execute_values(
+        cur,
+        "INSERT INTO tb_autenticacoes_api (usuario_id, token, tipo_token, criado_em, expira_em) VALUES %s",
+        linhas, page_size=5000,
+    )
+    return len(linhas)
+
+
+# ==============================================================================
+# 9. DAU (ATIVIDADE DIÁRIA)
+# ==============================================================================
+
+def dias_ativos(inicio, fim, perfil, comercial, forcados, rnd):
+    """
+    Dias (date local) em que o usuário abriu o app entre inicio e fim.
+    Probabilidade diária = base do perfil x dia da semana x campanha x
+    novidade (1a semana) x desgaste; quem abandonou (fim antes de hoje)
+    decai até sumir em `fim`.
+    Dias em `forcados` (houve postagem/voto/aula/quiz) e o dia do cadastro
+    sempre entram.
+    """
+    base = PERFIS[perfil]["p_dia"]
+    total = max(1, (fim - inicio).days)
+    dias = set(forcados) | {inicio}
+    d = inicio
+    while d <= fim:
+        idade = (d - inicio).days
+        p = base * _peso_dia(d, comercial)
+        p *= 1.5 if idade < 7 else max(0.6, 1 - idade / 900)
+        if fim < HOJE:
+            p *= 1 - 0.85 * idade / total
+        if rnd.random() < min(p, 0.97):
+            dias.add(d)
+        d += timedelta(days=1)
+    return sorted(dias)
+
+
+def popular_atividades_diarias(cur):
+    """
+    Gera tb_atividades_diarias_usuarios a partir de USUARIOS, forçando como
+    ativos os dias com eventos reais já gravados, e consolida tb_metricas_dau
+    via sp_consolidar_metricas_dau. Retorna a quantidade de linhas.
+    """
+    cur.execute(
+        """SELECT usuario_id, dia, SUM(n)::INT FROM (
+               SELECT usuario_id, (data_postagem AT TIME ZONE 'America/Sao_Paulo')::DATE dia, COUNT(*) n
+                 FROM tb_postagens GROUP BY 1, 2
+               UNION ALL
+               SELECT usuario_id, (votado_em AT TIME ZONE 'America/Sao_Paulo')::DATE, COUNT(*)
+                 FROM tb_rel_votos_postagens GROUP BY 1, 2
+               UNION ALL
+               SELECT usuario_id, (data_inicio AT TIME ZONE 'America/Sao_Paulo')::DATE, COUNT(*)
+                 FROM tb_rel_usuarios_cursos GROUP BY 1, 2
+               UNION ALL
+               SELECT usuario_id, (iniciado_em AT TIME ZONE 'America/Sao_Paulo')::DATE, COUNT(*)
+                 FROM tb_tentativas_quiz GROUP BY 1, 2
+               UNION ALL
+               SELECT usuario_avaliador_id, (avaliado_em AT TIME ZONE 'America/Sao_Paulo')::DATE, COUNT(*)
+                 FROM tb_avaliacoes_visitas_coletas GROUP BY 1, 2
+           ) x GROUP BY 1, 2"""
+    )
+    eventos = {}
+    for usuario_id, dia, n in cur.fetchall():
+        eventos.setdefault(usuario_id, {})[dia] = n
+
+    linhas = []
+    for usuario_id, u in USUARIOS.items():
+        acoes = eventos.get(usuario_id, {})
+        plataforma = rng.choices(["android", "ios", "web"],
+                                 weights=[50, 25, 25] if u["comercial"] else [62, 28, 10])[0]
+        inicio = u["inicio"].astimezone(TZ).date()
+        fim = u["fim"].astimezone(TZ).date()
+        for dia in dias_ativos(inicio, fim, u["perfil"], u["comercial"], acoes, rng):
+            sessoes = 1 + min(int(rng.expovariate(1.2 if u["perfil"] == "power" else 2.0)), 8)
+            minutos = sum(rng.randint(1, 9) for _ in range(sessoes))
+            hora = rng.choices(range(24), weights=_PESOS_HORA)[0]
+            primeira = datetime(dia.year, dia.month, dia.day, hora, rng.randint(0, 59), tzinfo=TZ)
+            ultima = min(primeira + timedelta(minutes=minutos + (sessoes - 1) * rng.randint(20, 180)),
+                         datetime(dia.year, dia.month, dia.day, 23, 59, 59, tzinfo=TZ))
+            linhas.append((
+                usuario_id, dia,
+                plataforma if fk.boolean(90) else rng.choice(["android", "ios", "web"]),
+                sessoes, minutos, acoes.get(dia, 0) + rng.randint(0, 3 * sessoes),
+                primeira, ultima,
+            ))
+
+    execute_values(
+        cur,
+        """INSERT INTO tb_atividades_diarias_usuarios
+               (usuario_id, data_atividade, plataforma, qtd_sessoes, minutos_ativos,
+                qtd_acoes, primeira_atividade_em, ultima_atividade_em) VALUES %s""",
+        linhas, page_size=5000,
+    )
+    cur.execute("CALL sp_consolidar_metricas_dau(%s, %s)", (min(l[1] for l in linhas), HOJE))
+    return len(linhas)
 
 
 # ==============================================================================
@@ -983,10 +1379,15 @@ def criar_notificacoes_usuario(cur, usuario_id, qtd):
 
 def limpar_dados_banco(cur):
     """
-    TRUNCATE em ordem de dependência (filhos antes dos pais). Tabelas
-    tb_lkp_* ficam de fora: são seeds fixos reaproveitados entre execuções.
+    TRUNCATE de todas as tabelas de negócio num único comando (o Postgres
+    resolve a ordem das FKs). Tabelas tb_lkp_* ficam de fora: são seeds
+    fixos reaproveitados entre execuções.
     """
     tabelas = [
+        "tb_metricas_dau",
+        "tb_atividades_diarias_usuarios",
+        "tb_movimentacoes_pontos",
+        "tb_autenticacoes_api",
         "tb_notificacoes",
         "tb_log_auditoria_postagens",
         "tb_log_auditoria_agendamentos_coletas",
@@ -1011,14 +1412,13 @@ def limpar_dados_banco(cur):
         "tb_sindicos",
         "tb_torres",
         "tb_condominios",
-        "tb_cooperativas",
         "tb_pontos_coletas",
+        "tb_cooperativas",
         "tb_rel_cooperativas_categorias_materiais",
         "tb_rel_pontos_coletas_categorias",
         "tb_enderecos",
         "tb_telefones",
         "tb_usuarios",
     ]
-    for tabela in tabelas:
-        cur.execute(f"TRUNCATE TABLE {tabela} RESTART IDENTITY CASCADE")
+    cur.execute(f"TRUNCATE TABLE {', '.join(tabelas)} RESTART IDENTITY CASCADE")
     print("Banco limpo: dados removidos, estrutura mantida.")
