@@ -2,29 +2,32 @@
 main.py
 
 Carga inicial de massa de dados do EcoCiente. Popula o schema PostgreSQL
-(ecociente_schema_ajustado.sql) com dados fictícios em pt_BR via FakerBR
+(sql/ecociente_schema.sql) com dados fictícios em pt_BR via FakerBR
 (faker_br.py) e as funções de utils/database.py.
 
-Pré-requisito: rodar ecociente_schema_ajustado.sql antes.
+Pré-requisito: rodar sql/ecociente_schema.sql antes.
 
 Instalação:
     pip install -r requirements.txt
 
 Uso:
-    python main.py [--seed N] [--force]
-    (configure utils.helpers.DB_CONFIG ou exporte ECOCIENTE_DSN /
-     ECOCIENTE_DB_HOST / ECOCIENTE_DB_PORT / ECOCIENTE_DB_NAME /
-     ECOCIENTE_DB_USER / ECOCIENTE_DB_PASSWORD / ECOCIENTE_DB_SSLMODE)
+    python src/main.py [--seed N] [--escala leve|medio|pesado] [--force]
+    (configure o .env com ECOCIENTE_DSN ou ECOCIENTE_DB_HOST / ECOCIENTE_DB_PORT /
+     ECOCIENTE_DB_NAME / ECOCIENTE_DB_USER / ECOCIENTE_DB_PASSWORD / ECOCIENTE_DB_SSLMODE)
 
-    --seed N   usa N em vez do SEED fixo de utils/database.py (massa diferente a cada valor).
-    --force    pula a confirmação antes de apagar os dados existentes
-               (mesmo efeito de exportar ECOCIENTE_ALLOW_RESET=1).
+    --seed N    usa N em vez do SEED fixo de utils/database.py (massa diferente a cada valor).
+    --escala    multiplica a quantidade de condomínios/cooperativas/usuários
+                (leve 0.3 | medio 1 | pesado 3). Padrão: medio (~55 MB).
+    --force     pula a confirmação antes de apagar os dados existentes
+                (mesmo efeito de exportar ECOCIENTE_ALLOW_RESET=1).
 """
 
 import argparse
 import os
 import sys
+import time
 from collections import defaultdict
+from datetime import timedelta
 
 from utils.helpers import get_connection, target_description
 
@@ -35,20 +38,17 @@ except ImportError:
     print("    pip install psycopg2-binary --break-system-packages")
     sys.exit(1)
 
+from utils import database as db
 from utils.database import (
-    N_CONDOMINIOS_RESIDENCIAL,
-    N_CONDOMINIOS_COMERCIAL,
-    N_COOPERATIVAS,
-    N_USUARIOS_COMUM,
-    TORRES_POR_RESIDENCIAL,
-    MORADORES_POR_TORRE,
-    USUARIOS_POR_COMERCIAL,
-    PONTOS_COLETA_POR_COOPERATIVA,
-    POSTAGENS_POR_OCUPANTE,
-    NOTIFICACOES_POR_USUARIO,
+    AGORA,
     AGENDAMENTOS_POR_CONDOMINIO,
+    DIAS_HISTORICO,
+    MORADORES_POR_TORRE,
+    PONTOS_COLETA_POR_COOPERATIVA,
+    TORRES_POR_RESIDENCIAL,
+    USUARIOS,
+    USUARIOS_POR_COMERCIAL,
     VISITAS_POR_AGENDAMENTO,
-    AULAS_POR_USUARIO,
     fk,
     rng,
     popular_tipos_usuarios,
@@ -73,18 +73,44 @@ from utils.database import (
     vincular_categorias_ponto_coleta,
     popular_cursos_e_aulas,
     popular_quizzes,
-    criar_postagem,
-    simular_votos_postagem,
+    gerar_postagens,
+    encerrar_janelas_postagens,
+    registrar_ledger_pontos,
     criar_agendamento,
     criar_recorrencia,
     criar_visita,
-    confirmar_visita,
     criar_avaliacao_visita,
-    matricular_usuario_em_aulas,
-    simular_tentativa_quiz,
-    criar_notificacoes_usuario,
+    simular_trilhas,
+    popular_notificacoes,
+    popular_autenticacoes_api,
+    popular_atividades_diarias,
     limpar_dados_banco,
 )
+
+ESCALAS = {"leve": 0.3, "medio": 1.0, "pesado": 3.0}
+
+TABELAS_RESUMO = [
+    "tb_lkp_tipos_usuarios", "tb_usuarios", "tb_telefones", "tb_notificacoes",
+    "tb_autenticacoes_api",
+    "tb_lkp_tipos_condominios", "tb_condominios", "tb_sindicos",
+    "tb_moradores", "tb_torres",
+    "tb_enderecos", "tb_rel_usuarios_condominios", "tb_pontos_coletas", "tb_cooperativas",
+    "tb_lkp_categorias_residuos", "tb_rel_cooperativas_categorias_materiais",
+    "tb_rel_pontos_coletas_categorias",
+    "tb_lkp_niveis_confianca", "tb_lkp_status_validacoes_postagens",
+    "tb_lkp_tipos_votos_postagens", "tb_lkp_motivos_denuncia",
+    "tb_postagens", "tb_rel_votos_postagens", "tb_movimentacoes_pontos",
+    "tb_lkp_status_agendamentos",
+    "tb_agendamentos_coletas", "tb_visitas_coletas", "tb_avaliacoes_visitas_coletas",
+    "tb_lkp_dias_semanas", "tb_rel_recorrencias_agendamentos", "tb_cursos", "tb_aulas",
+    "tb_quizzes", "tb_perguntas_quiz", "tb_alternativas_quiz",
+    "tb_tentativas_quiz", "tb_rel_respostas_tentativas_quiz",
+    "tb_rel_usuarios_cursos",
+    "tb_lkp_tipos_eventos_auditados", "tb_lkp_tipos_operacoes_auditoria", "tb_log_auditoria",
+    "tb_log_auditoria_postagens", "tb_log_auditoria_agendamentos_coletas",
+    "tb_log_auditoria_usuarios_condominios",
+    "tb_atividades_diarias_usuarios", "tb_metricas_dau",
+]
 
 
 # ==============================================================================
@@ -94,9 +120,11 @@ from utils.database import (
 def parse_args():
     parser = argparse.ArgumentParser(description="Carga inicial de massa de dados do EcoCiente.")
     parser.add_argument("--seed", type=int, default=None,
-                         help="Seed do gerador aleatório (padrão: SEED fixo de utils/database.py).")
+                        help="Seed do gerador aleatório (padrão: SEED fixo de utils/database.py).")
+    parser.add_argument("--escala", choices=ESCALAS, default="medio",
+                        help="Volume da massa: leve (~25 MB), medio (~55 MB), pesado (~145 MB).")
     parser.add_argument("--force", action="store_true",
-                         help="Pula a confirmação antes de apagar os dados existentes.")
+                        help="Pula a confirmação antes de apagar os dados existentes.")
     return parser.parse_args()
 
 
@@ -117,14 +145,19 @@ def confirmar_limpeza(force):
     return resposta == "sim"
 
 
+def escalar(n, fator):
+    return max(1, round(n * fator))
+
+
 def main():
     args = parse_args()
-    if args.seed is not None:
-        fk.reseed(args.seed)
-        rng.seed(args.seed)
+    seed = db.SEED if args.seed is None else args.seed
+    fk.reseed(seed)
+    rng.seed(seed)
+    fator = ESCALAS[args.escala]
 
     print("=" * 78)
-    print("EcoCiente - Carga inicial de massa de dados (FakerBR)")
+    print(f"EcoCiente - Carga inicial de massa de dados (seed={seed}, escala={args.escala})")
     print("=" * 78)
 
     conn = get_connection()
@@ -139,9 +172,10 @@ def main():
     # Toda execução parte de um estado limpo -- evita duplicar codigo_acesso,
     # emails, hash_foto etc. entre uma rodada e outra do script.
     limpar_dados_banco(cur)
+    t0 = time.time()
 
-    print("\n[1/9] Tabelas de domínio / lookup...")
     try:
+        print("\n[1/10] Tabelas de domínio / lookup...")
         tipos_usuario = popular_tipos_usuarios(cur)
         tipos_condominio = popular_tipos_condominios(cur)
         dias_semana = popular_dias_semana(cur)
@@ -149,235 +183,160 @@ def main():
         categorias = popular_categorias_residuos(cur)
         categorias_reciclaveis = [cid for nome, cid in categorias.items() if nome != "Rejeito"]
 
-        popular_niveis_confianca(cur)
+        niveis = popular_niveis_confianca(cur)
         status_validacoes = popular_status_validacoes_postagens(cur)
-        status_em_analise_id = status_validacoes["em_analise"]
         popular_tipos_votos_postagens(cur)
-        motivos_denuncia = popular_motivos_denuncia(cur)
-        motivos_denuncia_ids = list(motivos_denuncia.values())
+        motivos_denuncia_ids = list(popular_motivos_denuncia(cur).values())
 
-        print("[2/9] Cursos, aulas e quizzes...")
+        print("[2/10] Cursos, aulas e quizzes (trilha real)...")
         cursos_ids, aulas_por_curso = popular_cursos_e_aulas(cur)
         quizzes_por_aula = popular_quizzes(cur, cursos_ids, aulas_por_curso)
 
-        print("[3/9] Usuários comuns...")
-        usuarios_comuns = []
-        for _ in range(N_USUARIOS_COMUM):
-            uid, _ = criar_usuario(cur, tipos_usuario["Usuário Comum"])
-            usuarios_comuns.append(uid)
+        print("[3/10] Usuários comuns...")
+        usuarios_comuns = [
+            criar_usuario(cur, tipos_usuario["Usuário Comum"])[0]
+            for _ in range(escalar(db.N_USUARIOS_COMUM, fator))
+        ]
+        for _ in range(2):
+            criar_usuario(cur, tipos_usuario["Administrador"], perfil="power", pioneiro=True)
 
-        print("[4/9] Cooperativas + pontos de coleta...")
-        cooperativas = []  # (cooperativa_id, nome, usuario_id)
-        for _ in range(N_COOPERATIVAS):
-            u_coop, _ = criar_usuario(cur, tipos_usuario["Cooperativa"])
-            coop_id, coop_nome = criar_cooperativa(cur, u_coop)
+        print("[4/10] Cooperativas + pontos de coleta...")
+        cooperativas = []  # (cooperativa_id, nome, usuario_id, qualidade)
+        for _ in range(escalar(db.N_COOPERATIVAS, fator)):
+            u_coop, _ = criar_usuario(cur, tipos_usuario["Cooperativa"], perfil="power", pioneiro=True)
+            coop_id, coop_nome, qualidade = criar_cooperativa(cur, u_coop)
             vincular_categorias_cooperativa(cur, coop_id, categorias_reciclaveis)
             for _ in range(rng.randint(*PONTOS_COLETA_POR_COOPERATIVA)):
                 ponto_id = criar_ponto_coleta(cur, coop_id, coop_nome)
                 vincular_categorias_ponto_coleta(cur, ponto_id, categorias_reciclaveis)
-            cooperativas.append((coop_id, coop_nome, u_coop))
+            cooperativas.append((coop_id, coop_nome, u_coop, qualidade))
 
-        ocupantes = []  # dicts com usuario_id, condominio_id, torre_id, morador_id, sindico_id etc.
-        votantes_por_condominio = defaultdict(list)  # usuario_ids com vínculo aprovado, por condomínio
+        ocupantes = []  # dicts com usuario_id, condominio_id, torre_id, sindico_usuario_id
+        votantes_por_condominio = defaultdict(list)  # vínculo aprovado e ativo, por condomínio
+        sindico_por_condominio = {}
 
-        print("[5/9] Condomínios residenciais + torres + moradores...")
-        condominios_residenciais = []
-        for i in range(N_CONDOMINIOS_RESIDENCIAL):
-            sindico_usuario_id, sindico_nome = criar_usuario(cur, tipos_usuario["Síndico Residencial"])
-            sindico_id = criar_subtipo_sindico(cur, sindico_usuario_id)
+        def novo_condominio(tipo, comercial):
+            tipo_sindico = "Síndico Comercial" if comercial else "Síndico Residencial"
+            sindico_uid, _ = criar_usuario(cur, tipos_usuario[tipo_sindico],
+                                           perfil="power", comercial=comercial, pioneiro=True)
+            sindico_id = criar_subtipo_sindico(cur, sindico_uid)
+            nome = fk.edificio_comercial_name() if comercial else fk.condominio_name()
+            condominio_id = criar_condominio(cur, tipos_condominio[tipo], sindico_id, nome, comercial=comercial)
+            # síndico também vota, com peso 3 (nível "sindico")
+            criar_vinculo_condominio(cur, sindico_uid, condominio_id,
+                                     nivel_confianca_id=niveis["sindico"], aprovado=True)
+            votantes_por_condominio[condominio_id].append(sindico_uid)
+            sindico_por_condominio[condominio_id] = sindico_uid
+            return condominio_id, sindico_uid
 
-            nome_condominio = fk.condominio_name()
-            condominio_id = criar_condominio(
-                cur, tipos_condominio["Residencial"], sindico_id, nome_condominio, comercial=False
-            )
-            condominios_residenciais.append(condominio_id)
+        def novo_ocupante(tipo_usuario, condominio_id, sindico_uid, torre_id, comercial):
+            desde = USUARIOS[sindico_uid]["inicio"]
+            uid, _ = criar_usuario(cur, tipos_usuario[tipo_usuario], desde=desde, comercial=comercial)
+            criar_morador(cur, uid, condominio_id)
+            _, pode_votar = criar_vinculo_condominio(cur, uid, condominio_id,
+                                                     aprovado_por_usuario_id=sindico_uid)
+            if pode_votar:
+                votantes_por_condominio[condominio_id].append(uid)
+            ocupantes.append({"usuario_id": uid, "condominio_id": condominio_id,
+                              "torre_id": torre_id, "sindico_usuario_id": sindico_uid})
 
+        print("[5/10] Condomínios residenciais + torres + moradores...")
+        for _ in range(escalar(db.N_CONDOMINIOS_RESIDENCIAL, fator)):
+            condominio_id, sindico_uid = novo_condominio("Residencial", comercial=False)
             for t in range(rng.randint(*TORRES_POR_RESIDENCIAL)):
                 torre_id = criar_torre(cur, condominio_id, f"Torre {chr(65 + t)}")
                 for _ in range(rng.randint(*MORADORES_POR_TORRE)):
-                    uid, _ = criar_usuario(cur, tipos_usuario["Morador Residencial"])
-                    morador_id = criar_morador(cur, uid, condominio_id)
-                    _, aprovado = criar_vinculo_condominio(
-                        cur, uid, condominio_id, aprovado_por_usuario_id=sindico_usuario_id
-                    )
-                    if aprovado:
-                        votantes_por_condominio[condominio_id].append(uid)
-                    ocupantes.append({
-                        "usuario_id": uid,
-                        "condominio_id": condominio_id,
-                        "torre_id": torre_id,
-                        "morador_id": morador_id,
-                        "sindico_usuario_id": sindico_usuario_id,
-                        "sindico_id": sindico_id,
-                    })
+                    novo_ocupante("Morador Residencial", condominio_id, sindico_uid, torre_id, False)
 
-        print("[6/9] Condomínios comerciais + moradores/usuários comerciais...")
-        condominios_comerciais = []
-
-        for i in range(N_CONDOMINIOS_COMERCIAL):
-            sindico_usuario_id, _ = criar_usuario(cur, tipos_usuario["Síndico Comercial"])
-            sindico_id = criar_subtipo_sindico(cur, sindico_usuario_id)
-
-            nome_condominio = fk.edificio_comercial_name()
-            condominio_id = criar_condominio(
-                cur, tipos_condominio["Comercial"], sindico_id, nome_condominio, comercial=True
-            )
-            condominios_comerciais.append(condominio_id)
-
+        print("[6/10] Condomínios comerciais + usuários comerciais...")
+        for _ in range(escalar(db.N_CONDOMINIOS_COMERCIAL, fator)):
+            condominio_id, sindico_uid = novo_condominio("Comercial", comercial=True)
             for _ in range(rng.randint(*USUARIOS_POR_COMERCIAL)):
-                uid, _ = criar_usuario(cur, tipos_usuario["Usuário Comercial"])
-                morador_id = criar_morador(cur, uid, condominio_id)
-                _, aprovado = criar_vinculo_condominio(
-                    cur, uid, condominio_id, aprovado_por_usuario_id=sindico_usuario_id
-                )
-                if aprovado:
-                    votantes_por_condominio[condominio_id].append(uid)
-                ocupantes.append({
-                    "usuario_id": uid,
-                    "condominio_id": condominio_id,
-                    "torre_id": None,
-                    "morador_id": morador_id,
-                    "sindico_usuario_id": sindico_usuario_id,
-                    "sindico_id": sindico_id,
-                })
+                novo_ocupante("Usuário Comercial", condominio_id, sindico_uid, None, True)
 
-        todos_condominios = condominios_residenciais + condominios_comerciais
-        ocupante_por_usuario = {o["usuario_id"]: o for o in ocupantes}
+        print(f"      -> {len(USUARIOS)} usuários, {len(ocupantes)} ocupantes, "
+              f"{len(sindico_por_condominio)} condomínios.")
 
-        print(f"      -> {len(ocupantes)} ocupantes (moradores/usuários comerciais) gerados.")
+        print("[7/10] Postagens, votos (sp_processar_voto_postagem) e encerramento das janelas...")
+        qtd_postagens, qtd_votos = gerar_postagens(
+            cur, ocupantes, votantes_por_condominio, categorias,
+            status_validacoes["em_analise"], motivos_denuncia_ids,
+        )
+        encerrar_janelas_postagens(cur, seed)
+        recalcular_trust_scores(cur)
+        print(f"      -> {qtd_postagens} postagens, {qtd_votos} votos; trust_score recalculado.")
 
-        print("[7/9] Postagens de descarte + votos de moderação...")
-        qtd_postagens = 0
-        for ocupante in ocupantes:
-            votantes_condominio = votantes_por_condominio.get(ocupante["condominio_id"], [])
-            for _ in range(rng.randint(*POSTAGENS_POR_OCUPANTE)):
-                categoria_id = fk.random_element(categorias_reciclaveis)
-                data_postagem = fk.date_time_growth(90, 0)
-                postagem_id = criar_postagem(
-                    cur, ocupante["usuario_id"], ocupante["condominio_id"],
-                    categoria_id, data_postagem, status_em_analise_id,
-                    torre_id=ocupante.get("torre_id"),
-                )
-                simular_votos_postagem(
-                    cur, postagem_id, ocupante["usuario_id"],
-                    votantes_condominio, motivos_denuncia_ids,
-                )
-                qtd_postagens += 1
-
-        print(f"      -> {qtd_postagens} postagens criadas.")
-
-        print("[8/9] Agendamentos, recorrências, visitas, avaliações e trust score...")
-        qtd_visitas_confirmadas = qtd_visitas_recusadas = qtd_visitas_futuras = 0
-        qtd_avaliacoes = 0
-        for condominio_id in todos_condominios:
-            coop_id, _, _ = fk.random_element(cooperativas)
+        print("[8/10] Agendamentos, recorrências, visitas e avaliações...")
+        qtd_visitas = 0
+        for condominio_id, sindico_uid in sindico_por_condominio.items():
+            parceiras = rng.sample(cooperativas, min(2, len(cooperativas)))
             for _ in range(rng.randint(*AGENDAMENTOS_POR_CONDOMINIO)):
-                recorrente = fk.boolean(70)
-                status_id = fk.random_element(list(status_agendamento.values()))
-                agendamento_id = criar_agendamento(cur, condominio_id, coop_id, status_id, recorrente)
-
+                coop_id, _, _, qualidade = rng.choice(parceiras)
+                data_inicio = AGORA + timedelta(days=rng.uniform(-DIAS_HISTORICO, 45))
+                futuro = data_inicio > AGORA
+                if futuro:
+                    status = "Confirmado" if fk.boolean(55) else "Agendado"
+                else:
+                    status = rng.choices(["Realizado", "Cancelado", "Recusado"],
+                                         weights=[qualidade * 100, 12, (1 - qualidade) * 40])[0]
+                recorrente = fk.boolean(65)
+                agendamento_id = criar_agendamento(cur, condominio_id, coop_id, status_agendamento,
+                                                   data_inicio, status, recorrente)
                 if recorrente:
-                    for dia_id in fk.random_elements(list(dias_semana.values()), length=rng.randint(1, 2), unique=True):
+                    for dia_id in rng.sample(list(dias_semana.values()), rng.randint(1, 2)):
                         criar_recorrencia(cur, agendamento_id, dia_id)
 
-                for _ in range(rng.randint(*VISITAS_POR_AGENDAMENTO)):
-                    no_passado = fk.boolean(70)
-                    data_visita = fk.date_time_between(120, 1) if no_passado else fk.date_time_future(60)
-                    visita_id = criar_visita(cur, agendamento_id, data_visita)
-
-                    if no_passado:
-                        confirmou = fk.boolean(80)
-                        obs = None if confirmou else fk.sentence(8)
-                        confirmar_visita(cur, visita_id, confirmou, obs)
-                        if confirmou:
-                            qtd_visitas_confirmadas += 1
-                        else:
-                            qtd_visitas_recusadas += 1
-
-                        if fk.boolean(70):
-                            sindico_da_visita = next(
-                                (o["sindico_usuario_id"] for o in ocupantes if o["condominio_id"] == condominio_id), None
-                            )
-                            if sindico_da_visita:
-                                criar_avaliacao_visita(cur, visita_id, sindico_da_visita)
-                                qtd_avaliacoes += 1
-                    else:
-                        qtd_visitas_futuras += 1
-
-        print(f"      -> visitas: {qtd_visitas_confirmadas} confirmadas | {qtd_visitas_recusadas} recusadas | "
-            f"{qtd_visitas_futuras} futuras (pendentes) | {qtd_avaliacoes} avaliações")
-
-        recalcular_trust_scores(cur)
-        print("      -> trust_score recalculado via sp_atualizar_trust_score para todos os vínculos.")
-
-        print("[9/9] Matrículas em cursos, tentativas de quiz e notificações...")
-        todas_aulas = [aula_id for aulas in aulas_por_curso.values() for aula_id in aulas]
-        todos_usuarios_ensino = usuarios_comuns + [o["usuario_id"] for o in ocupantes]
-        for usuario_id in todos_usuarios_ensino:
-            ocupante = ocupante_por_usuario.get(usuario_id)
-            condominio_id = ocupante["condominio_id"] if ocupante else None
-            torre_id = ocupante["torre_id"] if ocupante else None
-
-            # Amostra algumas aulas (não o curso inteiro) para manter o
-            # volume de matrículas por usuário realista. Só 20 das 238 aulas
-            # têm quiz (a última de cada curso âncora) -- adiciona uma delas
-            # com 40% de chance para garantir tentativas de quiz de verdade.
-            aulas_escolhidas = set(fk.random_elements(todas_aulas, length=rng.randint(*AULAS_POR_USUARIO), unique=True))
-            if quizzes_por_aula and fk.boolean(30):
-                aulas_escolhidas.add(fk.random_element(list(quizzes_por_aula.keys())))
-            aulas_escolhidas = list(aulas_escolhidas)
-            aulas_concluidas = matricular_usuario_em_aulas(cur, usuario_id, aulas_escolhidas)
-            for aula_id in aulas_concluidas:
-                # só uma fração das aulas tem quiz associado (1 quiz por curso,
-                # ancorado na última aula) -- as demais não aparecem no dict.
-                if aula_id in quizzes_por_aula and fk.boolean(70):
-                    simular_tentativa_quiz(
-                        cur, usuario_id, quizzes_por_aula[aula_id],
-                        condominio_id=condominio_id, torre_id=torre_id,
+                passo = 7 if recorrente else 14
+                for i in range(rng.randint(*VISITAS_POR_AGENDAMENTO) if recorrente else 1):
+                    data_visita = data_inicio + timedelta(days=passo * i, hours=rng.randint(0, 2))
+                    qtd_visitas += 1
+                    if data_visita > AGORA:
+                        criar_visita(cur, agendamento_id, data_visita)
+                        continue
+                    realizada = status == "Realizado" and fk.boolean(round(qualidade * 100))
+                    visita_id = criar_visita(
+                        cur, agendamento_id, data_visita,
+                        foi_realizada=realizada, houve_confirmacao=True,
+                        confirmado_em=data_visita + timedelta(minutes=rng.randint(10, 240)),
+                        observacao=None if realizada else rng.choice([
+                            "Cooperativa não compareceu.", "Caminhão quebrado, reagendar.",
+                            "Portaria não liberou a entrada.", "Pouco material separado.",
+                        ]),
                     )
+                    if fk.boolean(70):
+                        criar_avaliacao_visita(cur, visita_id, sindico_uid, qualidade,
+                                               realizada, data_visita)
+        print(f"      -> {qtd_visitas} visitas.")
 
-        todos_usuarios_para_notificar = set(
-            usuarios_comuns
-            + [o["usuario_id"] for o in ocupantes]
-            + [o["sindico_usuario_id"] for o in ocupantes]
-            + [c[2] for c in cooperativas]
+        print("[9/10] Trilhas de ensino, quizzes, ledger de pontos, notificações e tokens...")
+        usuarios_ensino = usuarios_comuns + [o["usuario_id"] for o in ocupantes]
+        ocupante_por_usuario = {o["usuario_id"]: o for o in ocupantes}
+        qtd_matriculas, qtd_tentativas = simular_trilhas(
+            cur, usuarios_ensino, ocupante_por_usuario, aulas_por_curso, quizzes_por_aula
         )
-        for usuario_id in todos_usuarios_para_notificar:
-            criar_notificacoes_usuario(cur, usuario_id, rng.randint(*NOTIFICACOES_POR_USUARIO))
+        registrar_ledger_pontos(cur, seed)
+        qtd_notificacoes = popular_notificacoes(cur, list(USUARIOS))
+        qtd_tokens = popular_autenticacoes_api(cur, list(USUARIOS))
+        print(f"      -> {qtd_matriculas} matrículas, {qtd_tentativas} tentativas de quiz, "
+              f"{qtd_notificacoes} notificações, {qtd_tokens} tokens.")
+
+        print("[10/10] Atividade diária (DAU) + sp_consolidar_metricas_dau...")
+        qtd_dau = popular_atividades_diarias(cur)
+        print(f"      -> {qtd_dau} linhas de atividade diária.")
 
         print("\n" + "=" * 78)
-        print("Carga concluída. Resumo de linhas por tabela:")
+        print(f"Carga concluída em {time.time() - t0:.0f}s. Resumo de linhas por tabela:")
         print("=" * 78)
-        tabelas = [
-            "tb_lkp_tipos_usuarios", "tb_usuarios", "tb_telefones", "tb_notificacoes",
-            "tb_lkp_tipos_condominios", "tb_condominios", "tb_sindicos",
-            "tb_moradores", "tb_torres",
-            "tb_enderecos", "tb_rel_usuarios_condominios", "tb_pontos_coletas", "tb_cooperativas",
-            "tb_lkp_categorias_residuos", "tb_rel_cooperativas_categorias_materiais",
-            "tb_rel_pontos_coletas_categorias",
-            "tb_lkp_niveis_confianca", "tb_lkp_status_validacoes_postagens",
-            "tb_lkp_tipos_votos_postagens", "tb_lkp_motivos_denuncia",
-            "tb_postagens", "tb_rel_votos_postagens",
-            "tb_lkp_status_agendamentos",
-            "tb_agendamentos_coletas", "tb_visitas_coletas", "tb_avaliacoes_visitas_coletas",
-            "tb_lkp_dias_semanas", "tb_rel_recorrencias_agendamentos", "tb_cursos", "tb_aulas",
-            "tb_quizzes", "tb_perguntas_quiz", "tb_alternativas_quiz",
-            "tb_tentativas_quiz", "tb_rel_respostas_tentativas_quiz",
-            "tb_rel_usuarios_cursos",
-            "tb_lkp_tipos_eventos_auditados", "tb_lkp_tipos_operacoes_auditoria", "tb_log_auditoria",
-            "tb_log_auditoria_postagens", "tb_log_auditoria_agendamentos_coletas",
-            "tb_log_auditoria_usuarios_condominios",
-        ]
-        for tabela in tabelas:
+        for tabela in TABELAS_RESUMO:
             cur.execute(f"SELECT COUNT(*) FROM {tabela}")
-            print(f"  {tabela:38s} {cur.fetchone()[0]:>6d}")
+            print(f"  {tabela:40s} {cur.fetchone()[0]:>8d}")
 
-        print("\nObs.: tb_log_auditoria foi populada 100% automaticamente pelas triggers")
-        print("(trg_auditoria_postagens / trg_auditoria_agendamentos_coletas / trg_auditoria_usuarios_condominios)")
-        print("a cada INSERT/UPDATE feito neste script -- nenhuma linha foi inserida nela manualmente.")
-        print("\nObs.: tb_rel_votos_postagens foi populada via sp_processar_voto_postagem, e o")
-        print("trust_score final de tb_rel_usuarios_condominios via sp_atualizar_trust_score --")
-        print("ambas as procedures do próprio banco, não recálculo em Python.")
+        cur.execute("SELECT pg_size_pretty(pg_database_size(current_database()))")
+        print(f"\nTamanho do banco: {cur.fetchone()[0]} (Aiven free tier: 1 GB de disco)")
+
+        print("\nObs.: tb_log_auditoria foi populada 100% pelas triggers de auditoria;")
+        print("votos, encerramento de janelas, decisões manuais e trust_score passaram")
+        print("pelas procedures do próprio banco, não por recálculo em Python.")
     except Exception as e:
         print("\n[ERRO]", e)
         # Se a conexão/cursor morreu no meio do erro original (ex.: o
@@ -402,6 +361,7 @@ def main():
                 print("        Rode manualmente um TRUNCATE nas tabelas de negócio "
                       "antes da próxima execução, ou reexecute este script assim "
                       "que a conexão com o banco estiver estável novamente.")
+        sys.exit(1)
     finally:
         try:
             cur.close()
