@@ -1,5 +1,6 @@
 #helpers.py
 import os
+import re
 from dotenv import load_dotenv
 import sys
 try:
@@ -39,9 +40,26 @@ def get_connection():
 
 def target_description():
     """Descreve o destino da conexão sem expor senha -- usado em prompts de confirmação."""
+    cfg = DB_CONFIG
     if DSN:
-        return "conexão via ECOCIENTE_DSN"
-    return f"{DB_CONFIG.get('host')}:{DB_CONFIG.get('port')}/{DB_CONFIG.get('dbname')}"
+        try:
+            cfg = psycopg2.extensions.parse_dsn(DSN)
+        except psycopg2.Error:
+            return "conexão via ECOCIENTE_DSN"
+    return f"{cfg.get('host')}:{cfg.get('port')}/{cfg.get('dbname')}"
+
+
+def colunas_esperadas(sql):
+    """{tabela: {colunas}} lidas dos CREATE TABLE de sql/ecociente_schema.sql."""
+    return {
+        tabela: set(re.findall(r"^\s+([a-z_][a-z0-9_]*)\s+[A-Z]", corpo, re.M))
+        for tabela, corpo in re.findall(r"CREATE TABLE (?:IF NOT EXISTS )?(\w+) \((.*?)\);$", sql, re.S | re.M)
+    }
+
+
+def colunas_faltando(esperado, existentes):
+    """Lista 'tabela.coluna' do schema que não estão em `existentes` (pares tabela, coluna do banco)."""
+    return sorted(f"{t}.{c}" for t, colunas in esperado.items() for c in colunas if (t, c) not in existentes)
 
 
 def fetch_id(cur, sql, params):
