@@ -1276,9 +1276,17 @@ def popular_autenticacoes_api(cur, usuario_ids):
             linhas.append((usuario_id, token_unico(), "Bearer",
                            data_no_periodo(u["inicio"], u["fim"], u["comercial"]),
                            rng.choice([3600, 86400, 604800])))
+    # O banco compartilhado criou esta tabela com "expirado_em" (e PK "id"); o
+    # schema do repositório usa "expira_em". Aceita as duas.
+    cur.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = current_schema() AND table_name = 'tb_autenticacoes_api' "
+        "AND column_name IN ('expira_em', 'expirado_em')"
+    )
+    col_expira = cur.fetchone()[0]
     execute_values(
         cur,
-        "INSERT INTO tb_autenticacoes_api (usuario_id, token, tipo_token, criado_em, expira_em) VALUES %s",
+        f"INSERT INTO tb_autenticacoes_api (usuario_id, token, tipo_token, criado_em, {col_expira}) VALUES %s",
         linhas, page_size=5000,
     )
     return len(linhas)

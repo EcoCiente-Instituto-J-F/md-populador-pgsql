@@ -94,6 +94,8 @@ python main.py                      # escala "medio", seed 42, pede confirmaçã
 python main.py --escala leve        # carga rápida para desenvolvimento
 python main.py --seed 7 --force     # outra massa, sem confirmação
 python -m tests.test_dau            # self-check do gerador de DAU
+python -m tests.test_schema         # self-check da checagem de schema
+python -m tests.test_ui             # self-check dos cálculos do painel da tela
 ```
 
 | Opção | O que faz |
@@ -106,6 +108,34 @@ python -m tests.test_dau            # self-check do gerador de DAU
 > Cada execução faz `TRUNCATE … RESTART IDENTITY CASCADE` em **todas as tabelas de negócio** antes de popular. Só as `tb_lkp_*` são mantidas. Confira o banco de destino antes de confirmar.
 
 Se a carga falhar no meio, o script limpa o banco (se preciso, abrindo uma nova conexão) e sai com código `1`.
+
+## 🖥️ Usando pela tela
+
+Quem preferir não usar a linha de comando pode abrir a tela (tkinter, já vem com o Python):
+
+```bash
+cd src
+python ui.py
+```
+
+Nela você escolhe o tamanho da massa (leve, médio ou pesado) e a seed, e acompanha a carga pela barra de progresso e pelo log na aba **Andamento**. Antes de apagar qualquer coisa, a tela mostra o banco de destino, testa a conexão e confere se as colunas do banco batem com `sql/ecociente_schema.sql`.
+
+Quando a carga termina, a aba **Resultado** mostra um painel só com números da inserção, sem métricas de negócio:
+
+- linhas inseridas, tabelas populadas (e quais ficaram vazias), duração, linhas por segundo e tamanho do banco;
+- as dez tabelas com mais linhas;
+- o tempo gasto em cada uma das dez etapas;
+- todas as tabelas `tb_*` do banco, com linhas, participação no total e espaço em disco. Clique no título de uma coluna para ordenar.
+
+"Ler o banco agora" monta o mesmo painel a partir do que já está no banco, sem rodar carga (nesse caso não há tempos).
+
+As cores, fontes e espaçamentos da tela ficam no bloco `DESIGN SYSTEM` no topo de `src/ui.py`.
+
+Se a checagem acusar `tb_autenticacoes_api.expira_em`, o banco foi criado com os nomes antigos (`id`, `expirado_em`). Corrija com:
+
+```bash
+psql "$ECOCIENTE_DSN" -v ON_ERROR_STOP=1 -f sql/corrige_autenticacoes_api.sql
+```
 
 ## 📦 O que é gerado
 
@@ -310,10 +340,15 @@ SELECT c.nome_condominio, COUNT(*) AS abertas, MIN(p.data_limite_analise) AS ven
 .
 ├── sql/
 │   ├── ecociente_schema.sql        # DDL completo: 46 tabelas, functions, procedures, triggers, views
-│   └── migracao_dau.sql            # só o DAU, para bancos que já têm o schema
+│   ├── migracao_dau.sql            # só o DAU, para bancos que já têm o schema
+│   └── corrige_autenticacoes_api.sql   # renomeia id/expirado_em para os nomes do schema
 ├── src/
 │   ├── main.py                     # orquestra a carga (10 etapas) e imprime o resumo
+│   ├── ui.py                       # tela: escala, seed, checagem do banco, progresso e painel da inserção
+│   ├── assets/logo_branca.png      # logo usada na tela
 │   ├── tests/test_dau.py           # self-check do gerador de DAU
+│   ├── tests/test_schema.py        # self-check da checagem de schema
+│   ├── tests/test_ui.py            # self-check dos cálculos do painel
 │   └── utils/
 │       ├── database.py             # volumetria, perfis, geração e inserts
 │       ├── faker_br.py             # gerador de nomes, endereços, CPFs etc. em pt-BR (sem dependência)
