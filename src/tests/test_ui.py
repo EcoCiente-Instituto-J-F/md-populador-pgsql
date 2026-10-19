@@ -1,6 +1,8 @@
-"""Self-check dos cálculos do painel da tela. Rode a partir de src/:  python -m tests.test_ui"""
-from ui import (duracao, etapa_da_linha, grupo_da_tabela, inteiro, percentual, resumir_carga,
-                segundos_curtos, tamanho, tempos_por_etapa)
+"""Self-check da lógica da tela. Rode a partir de src/:  python -m tests.test_ui"""
+import http.client
+import threading
+
+from ui import Handler, Servidor, etapa_da_linha, grupo_da_tabela, resumir_carga, tempos_por_etapa
 
 
 def test_etapa_da_linha():
@@ -32,17 +34,25 @@ def test_resumir_carga():
     assert resumir_carga([], segundos=0)["linhas_por_segundo"] is None, "duração zero não divide"
 
 
-def test_formatos():
-    assert inteiro(1234567) == "1.234.567"
-    assert tamanho(57_671_680) == "55 MB"
-    assert tamanho(8192) == "8 kB"
-    assert duracao(9.4) == "9 s"
-    assert duracao(75) == "1 min 15 s"
-    assert duracao(0.4) == "menos de 1 s"
-    assert segundos_curtos(2.44) == "2,4 s"
-    assert segundos_curtos(0.01) == "< 0,1 s"
-    assert percentual(273, 1000) == "27,3%"
-    assert percentual(5, 0) == "0%", "banco vazio não divide por zero"
+def test_servidor_recusa_host_estranho_e_post_sem_json():
+    servidor = Servidor(("127.0.0.1", 0), Handler)
+    porta = servidor.server_address[1]
+    threading.Thread(target=servidor.serve_forever, daemon=True).start()
+
+    def pedir(metodo, caminho, headers, corpo=None):
+        c = http.client.HTTPConnection("127.0.0.1", porta)
+        c.request(metodo, caminho, corpo, headers)
+        return c.getresponse().status
+
+    try:
+        assert pedir("GET", "/", {"Host": "evil.com"}) == 403, "DNS rebinding"
+        assert pedir("GET", "/", {"Host": f"127.0.0.1:{porta}"}) == 200
+        assert pedir("POST", "/api/popular", {"Host": f"127.0.0.1:{porta}", "Content-Type": "text/plain"}, "x") == 415
+        json = {"Host": f"127.0.0.1:{porta}", "Content-Type": "application/json"}
+        assert pedir("POST", "/api/popular", json, '{"escala": "gigante", "seed": 1}') == 400
+        assert pedir("POST", "/api/popular", json, '{"escala": "leve", "seed": "42"}') == 400, "seed é inteiro, não texto"
+    finally:
+        servidor.shutdown()
 
 
 if __name__ == "__main__":
@@ -50,5 +60,5 @@ if __name__ == "__main__":
     test_tempos_por_etapa()
     test_grupo_da_tabela()
     test_resumir_carga()
-    test_formatos()
+    test_servidor_recusa_host_estranho_e_post_sem_json()
     print("ok")
