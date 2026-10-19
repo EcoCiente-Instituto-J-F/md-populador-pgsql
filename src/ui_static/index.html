@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EcoCiente · Populador</title>
+<style>
+:root {
+  /* Marca */
+  --floresta: #064d3c;      /* fundo da logo */
+  --floresta-2: #0a5f4b;
+  --floresta-3: #043a2d;
+  --sobre-floresta: #eaf3ee;
+  --sobre-floresta-2: #a9c9bb;
+  /* Base: neutros puxados para o verde da marca */
+  --papel: #edf2ee;
+  --folha-papel: #fbfdfb;
+  --linha: #d2ddd5;
+  --linha-2: #b3c4b9;
+  --tinta: #1b2a24;
+  --tinta-2: #4d5f56;
+  /* Estados */
+  --broto: #2e7d4f;         /* concluído */
+  --broto-fundo: #e3f0e6;
+  --barro: #b4472b;         /* falhou, apaga dados */
+  --barro-fundo: #f8e6df;
+  --ambar: #8a5a00;         /* em andamento */
+  --ambar-fundo: #f6ead0;
+
+  --raio: 8px;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+  --saida: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { color-scheme: light; scrollbar-color: var(--linha-2) transparent; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 296px minmax(0, 1fr);
+  background: var(--papel);
+  color: var(--tinta);
+  font: 0.875rem/1.5 var(--sans);
+  font-variant-numeric: tabular-nums;
+  caret-color: var(--floresta);
+}
+::selection { background: var(--floresta); color: var(--sobre-floresta); }
+:focus-visible { outline: 2px solid var(--floresta); outline-offset: 2px; border-radius: 4px; }
+.rail :focus-visible { outline-color: var(--sobre-floresta); }
+h1, h2 { margin: 0; text-wrap: balance; }
+h1 { font-size: 1.5rem; line-height: 1.2; font-weight: 650; letter-spacing: -0.015em; }
+h2 { font-size: 1rem; font-weight: 650; }
+p { margin: 0; }
+[hidden] { display: none !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+svg.ico { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor;
+  stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+svg.gira { animation: gira 0.9s linear infinite; }
+@keyframes gira { to { transform: rotate(360deg); } }
+
+/* ---------- Trilho lateral ---------- */
+.rail {
+  background: var(--floresta);
+  color: var(--sobre-floresta);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px 20px 20px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.marca { display: flex; align-items: center; gap: 14px; }
+.marca img { display: block; width: 56px; height: auto; }
+.marca strong { font-size: 1.125rem; line-height: 1.2; font-weight: 650; letter-spacing: -0.01em; }
+.rail h2 { font-size: 0.75rem; font-weight: 600; color: var(--sobre-floresta-2); margin-bottom: 8px; }
+.rail .alvo { font: 0.75rem/1.5 var(--mono); overflow-wrap: anywhere; margin-bottom: 10px; }
+.rail .nota { font-size: 0.8125rem; color: var(--sobre-floresta-2); margin-top: 8px; }
+.rail .nota.ok { color: #9be0b4; }
+.rail .nota.falha { color: #ffb59e; }
+.rail footer { margin-top: auto; display: grid; gap: 8px; }
+
+.opcao { display: block; padding: 9px 12px; margin-top: 4px; border-radius: 6px; cursor: pointer;
+  border: 1px solid rgb(234 243 238 / 22%);
+  transition: background-color 150ms var(--saida), border-color 150ms var(--saida); }
+.opcao:first-of-type { margin-top: 0; }
+.opcao:hover { background: rgb(234 243 238 / 8%); }
+.opcao:has(input:checked) { background: rgb(234 243 238 / 14%); border-color: var(--sobre-floresta); }
+.opcao:has(input:focus-visible) { outline: 2px solid var(--sobre-floresta); outline-offset: 2px; }
+.opcao:has(input:disabled) { cursor: not-allowed; opacity: 0.6; }
+.opcao input { position: absolute; opacity: 0; pointer-events: none; }
+.opcao b { display: block; font-weight: 600; }
+.opcao small { color: var(--sobre-floresta-2); font-size: 0.8125rem; }
+
+.linha-seed { display: flex; gap: 8px; }
+.campo { flex: 1 1 0; min-width: 0; min-height: 36px; padding: 0 10px; border-radius: 6px;
+  border: 1px solid rgb(234 243 238 / 35%); background: rgb(4 58 45 / 55%); color: var(--sobre-floresta);
+  font: 0.9375rem var(--mono); caret-color: var(--sobre-floresta); }
+.campo:focus-visible { outline: 2px solid var(--sobre-floresta); outline-offset: 1px; }
+.campo:disabled { opacity: 0.6; cursor: not-allowed; }
+.campo[aria-invalid="true"] { border-color: #ffb59e; }
+
+/* ---------- Botões ---------- */
+.btn {
+  font: 600 0.875rem/1 var(--sans);
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 36px; padding: 0 14px;
+  border-radius: 6px; border: 1px solid var(--linha-2);
+  background: var(--folha-papel); color: var(--tinta);
+  cursor: pointer;
+  transition: background-color 150ms var(--saida), border-color 150ms var(--saida), transform 100ms var(--saida);
+}
+.btn:hover { background: #fff; border-color: var(--tinta-2); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { cursor: not-allowed; color: #6f7f77; background: #e1e9e4; border-color: var(--linha); transform: none; }
+.btn.primario { background: var(--floresta); border-color: var(--floresta); color: #fff; }
+.btn.primario:hover { background: var(--floresta-2); border-color: var(--floresta-2); }
+.btn.primario:active { background: var(--floresta-3); }
+.btn.primario:disabled { background: #7fa398; border-color: #7fa398; color: #f2f7f4; }
+.btn.perigo { background: var(--barro); border-color: var(--barro); color: #fff; }
+.btn.perigo:hover { background: #9a3a22; border-color: #9a3a22; }
+.btn.fantasma { background: transparent; border-color: rgb(234 243 238 / 35%); color: var(--sobre-floresta); }
+.btn.fantasma:hover { background: rgb(234 243 238 / 10%); border-color: var(--sobre-floresta); }
+.btn.fantasma:disabled { color: var(--sobre-floresta-2); border-color: rgb(234 243 238 / 18%); background: transparent; }
+.rail .primario { background: var(--sobre-floresta); border-color: var(--sobre-floresta); color: var(--floresta-3); min-height: 40px; }
+.rail .primario:hover { background: #fff; border-color: #fff; }
+.rail .primario:disabled { background: rgb(234 243 238 / 25%); border-color: transparent; color: var(--sobre-floresta-2); }
+
+/* ---------- Área de trabalho ---------- */
+main { padding: 32px 40px 48px; max-width: 1180px; width: 100%; }
+.topo p { color: var(--tinta-2); margin-top: 6px; max-width: 62ch; font-size: 0.9375rem; }
+
+.aviso { display: grid; grid-template-columns: 16px 1fr; gap: 10px; margin-top: 20px; padding: 12px 14px;
+  border-radius: var(--raio); background: var(--barro-fundo); color: #7a2c18; border: 1px solid #e6b9aa; }
+.aviso svg { margin-top: 3px; }
+.aviso strong { display: block; color: #5f2010; }
+.aviso span { overflow-wrap: anywhere; }
+.aviso .acoes { grid-column: 2; display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+/* Etapas */
+.etapas { list-style: none; margin: 28px 0 0; padding: 0; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); }
+.etapas li { position: relative; padding-top: 30px; padding-right: 6px; font-size: 0.75rem; line-height: 1.3; color: var(--tinta-2); }
+.etapas li::before { content: ""; position: absolute; top: 10px; left: 22px; right: 0; height: 2px;
+  background: var(--linha); transition: background-color 200ms var(--saida); }
+.etapas li:last-child::before { display: none; }
+.etapas .marca-etapa { position: absolute; top: 0; left: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--papel); border: 2px solid var(--linha-2); color: var(--tinta-2);
+  font-size: 0.6875rem; font-weight: 650;
+  transition: background-color 200ms var(--saida), border-color 200ms var(--saida), color 200ms var(--saida); }
+.etapas .marca-etapa svg { width: 12px; height: 12px; stroke-width: 2.5; }
+.etapas li[data-status="ok"] { color: var(--tinta); }
+.etapas li[data-status="ok"]::before { background: var(--broto); }
+.etapas li[data-status="ok"] .marca-etapa { background: var(--broto); border-color: var(--broto); color: #fff; }
+.etapas li[data-status="rodando"] { color: var(--ambar); font-weight: 600; }
+.etapas li[data-status="rodando"] .marca-etapa { border-color: var(--ambar); color: var(--ambar); background: var(--ambar-fundo); }
+.etapas li[data-status="falhou"] { color: var(--barro); font-weight: 600; }
+.etapas li[data-status="falhou"] .marca-etapa { background: var(--barro); border-color: var(--barro); color: #fff; }
+
+/* Abas */
+.painel { margin-top: 32px; }
+.abas { display: flex; gap: 4px; border-bottom: 1px solid var(--linha); margin-bottom: 12px; }
+.abas button { font: 600 0.875rem/1 var(--sans); padding: 10px 12px; background: none; border: 0; color: var(--tinta-2);
+  border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; transition: color 150ms var(--saida); }
+.abas button:hover { color: var(--tinta); }
+.abas button[aria-selected="true"] { color: var(--floresta); border-bottom-color: var(--floresta); }
+.cartao { background: var(--folha-papel); border: 1px solid var(--linha); border-radius: var(--raio); overflow-x: auto; }
+#log { margin: 0; padding: 14px 16px; font: 0.75rem/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
+  height: 340px; overflow-y: auto; color: var(--tinta); }
+
+/* Resultado */
+.vazio { padding: 28px 16px; text-align: center; color: var(--tinta-2); display: grid; justify-items: center; gap: 14px; }
+.vazio.erro { color: #7a2c18; }
+.contexto { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; color: var(--tinta-2); }
+.numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin: 0 0 16px; }
+.numeros > div { padding: 14px 16px; }
+.numeros > div + div { border-left: 1px solid var(--linha); }
+.numeros dt { font-size: 0.75rem; font-weight: 600; color: var(--tinta-2); }
+.numeros dd { margin: 2px 0 0; font-size: 1.375rem; line-height: 1.3; font-weight: 650; letter-spacing: -0.01em; }
+.numeros dd small { display: block; font-size: 0.75rem; font-weight: 400; letter-spacing: 0; color: var(--tinta-2); overflow-wrap: anywhere; }
+.graficos { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-bottom: 16px; }
+.grafico { padding: 14px 16px 16px; }
+.grafico h3 { margin: 0 0 10px; font-size: 0.875rem; font-weight: 650; }
+.barras { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.barras li { display: grid; grid-template-columns: minmax(0, 40%) minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 24px; font-size: 0.8125rem; }
+.barras .rotulo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.barras .trilho { height: 10px; border-radius: 3px; background: #dfe8e2; }
+.barras .trilho i { display: block; height: 100%; border-radius: 3px; background: var(--floresta); min-width: 2px;
+  transition: width 400ms var(--saida); }
+.barras li:hover .trilho i { background: var(--floresta-2); }
+.barras .valor { min-width: 4ch; text-align: right; }
+.grafico .vazio { padding: 8px 0; text-align: left; justify-items: start; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 10px 16px; text-align: left; vertical-align: middle; }
+thead th { padding: 0; border-bottom: 1px solid var(--linha); }
+thead button { font: 600 0.75rem/1 var(--sans); color: var(--tinta-2); background: none; border: 0; width: 100%; text-align: inherit;
+  padding: 12px 16px; cursor: pointer; white-space: nowrap; }
+thead button:hover { color: var(--tinta); background: rgb(6 77 60 / 5%); }
+thead th[aria-sort] button { color: var(--floresta); }
+tbody tr + tr td, tbody tr + tr th { border-top: 1px solid var(--linha); }
+tbody th { font-weight: 400; font-family: var(--mono); font-size: 0.8125rem; }
+.num { text-align: right !important; }
+.tabela-rolagem { max-height: 420px; overflow-y: auto; }
+thead { position: sticky; top: 0; background: var(--folha-papel); }
+
+/* ---------- Telas estreitas ---------- */
+@media (max-width: 900px) {
+  body { grid-template-columns: minmax(0, 1fr); }
+  .rail { position: static; height: auto; overflow: visible; }
+  .rail footer { margin-top: 0; }
+  main { padding: 24px 16px 40px; }
+  .etapas { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 8px; }
+  .etapas li { padding: 2px 0 2px 32px; min-height: 22px; font-size: 0.8125rem; }
+  .etapas li::before { display: none; }
+  .numeros > div + div { border-left: 0; }
+  .graficos { grid-template-columns: minmax(0, 1fr); }
+  .btn { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; }
+  svg.gira { animation-duration: 2.4s; }
+}
+</style>
+</head>
+<body>
+
+<aside class="rail" aria-label="Configuração da carga">
+  <div class="marca">
+    <img src="/logo.png" alt="EcoCiente" width="81" height="68">
+    <strong>Populador<br>de dados</strong>
+  </div>
+
+  <section aria-labelledby="t-banco">
+    <h2 id="t-banco">Banco de destino</h2>
+    <p class="alvo" id="alvo">Lendo a configuração…</p>
+    <button class="btn fantasma" id="testar" type="button">Testar conexão</button>
+    <p class="nota" id="nota-banco" role="status" aria-live="polite">Conexão ainda não testada.</p>
+  </section>
+
+  <fieldset style="border:0;margin:0;padding:0;min-width:0" id="escalas">
+    <legend class="sr">Tamanho da massa</legend>
+    <h2 aria-hidden="true">Tamanho da massa</h2>
+    <label class="opcao"><input type="radio" name="escala" value="leve"><b>Leve</b><small>~400 usuários, ~25 MB, ~6 s</small></label>
+    <label class="opcao"><input type="radio" name="escala" value="medio" checked><b>Médio</b><small>~1.300 usuários, ~55 MB, ~20 s</small></label>
+    <label class="opcao"><input type="radio" name="escala" value="pesado"><b>Pesado</b><small>~4.300 usuários, ~145 MB, ~55 s</small></label>
+    <p class="nota">Tempos medidos em banco local. Em banco remoto (Aiven), conte com alguns minutos.</p>
+  </fieldset>
+
+  <section aria-labelledby="t-seed">
+    <h2 id="t-seed">Seed</h2>
+    <div class="linha-seed">
+      <input class="campo" id="seed" type="text" inputmode="numeric" autocomplete="off" value="42" aria-labelledby="t-seed" aria-describedby="nota-seed">
+      <button class="btn fantasma" id="sortear" type="button">Sortear</button>
+    </div>
+    <p class="nota" id="nota-seed">A mesma seed gera sempre a mesma massa.</p>
+  </section>
+
+  <footer>
+    <button class="btn primario" id="popular" type="button">Popular banco</button>
+    <button class="btn fantasma" id="encerrar" type="button">Encerrar programa</button>
+  </footer>
+</aside>
+
+<main>
+  <div class="topo">
+    <h1>Popular o banco</h1>
+    <p id="resumo" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="aviso" id="aviso" role="alert" hidden></div>
+
+  <ol class="etapas" id="etapas" aria-label="Etapas da carga"></ol>
+
+  <section class="painel" aria-label="Andamento e resultado">
+    <div class="abas" role="tablist">
+      <button role="tab" id="aba-andamento" aria-controls="painel-andamento" aria-selected="true" type="button">Andamento</button>
+      <button role="tab" id="aba-resultado" aria-controls="painel-resultado" aria-selected="false" tabindex="-1" type="button">Resultado</button>
+    </div>
+    <div class="cartao" role="tabpanel" id="painel-andamento" aria-labelledby="aba-andamento" tabindex="0">
+      <pre id="log"></pre>
+    </div>
+    <div role="tabpanel" id="painel-resultado" aria-labelledby="aba-resultado" hidden></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+// Tudo que vem do servidor entra por textContent: dados do banco nunca viram HTML.
+function el(tag, props = {}, ...filhos) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") node.className = v;
+    else if (k in node) node[k] = v;
+    else node.setAttribute(k, v);
+  }
+  node.append(...filhos.filter((f) => f != null));
+  return node;
+}
+
+const ICONES = {
+  check: "M3.5 8.5l3 3 6-7",
+  x: "M4 4l8 8M12 4l-8 8",
+  alerta: "M8 5v4M8 11.5h.01M8 1.5l6.5 12h-13z",
+  gira: "M8 1.5a6.5 6.5 0 1 1-6.5 6.5",
+};
+function icone(nome) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("class", "ico" + (nome === "gira" ? " gira" : ""));
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", ICONES[nome]);
+  svg.append(path);
+  return svg;
+}
+
+// ---------- formatação (pt-BR) ----------
+const LIMITE_AIVEN = 1024 ** 3;   // disco do plano gratuito da Aiven
+const inteiro = (n) => n.toLocaleString("pt-BR");
+const percentual = (parte, total) =>
+  total ? `${(100 * parte / total).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%` : "0%";
+function tamanho(bytes) {
+  if (bytes < 1024 ** 2) return `${Math.round(bytes / 1024)} kB`;
+  if (bytes < 1024 ** 3) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return `${(bytes / 1024 ** 3).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} GB`;
+}
+function duracao(segundos) {
+  if (segundos < 1) return "menos de 1 s";
+  const total = Math.round(segundos);
+  return total >= 60 ? `${Math.floor(total / 60)} min ${total % 60} s` : `${total} s`;
+}
+const segundosCurtos = (s) =>
+  s < 0.05 ? "< 0,1 s" : `${s.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} s`;
+
+// ---------- estado ----------
+const ETAPAS = ["Domínio", "Cursos", "Usuários", "Cooperativas", "Residenciais", "Comerciais", "Postagens", "Agendamentos", "Trilhas", "Atividade"];
+const ICONE_ETAPA = { ok: "check", rodando: "gira", falhou: "x" };
+const ROTULO_ETAPA = { ok: "concluída", rodando: "em andamento", falhou: "falhou", pendente: "pendente" };
+
+let carga = null;          // última carga conhecida pelo servidor
+let encerrado = false;
+let verificando = false;   // consultando o banco (teste ou antes de confirmar)
+let confirmacao = null;    // {alvo, faltando, escala, seed} enquanto espera o "sim"
+let erroTela = null;       // erro que não vem da carga (banco, seed, servidor)
+let resultado = { estado: "vazio" };   // vazio | lendo | erro | pronto
+const cache = {};
+
+// Só redesenha uma região quando os dados dela mudam (preserva foco e rolagem).
+function mudou(chave, valor) {
+  const json = JSON.stringify(valor);
+  if (cache[chave] === json) return false;
+  cache[chave] = json;
+  return true;
+}
+
+const rodando = () => carga?.rodando === true;
+const falhou = () => carga != null && !carga.rodando && carga.codigo !== 0;
+
+function statusEtapa(n) {
+  if (!carga) return "pendente";
+  if (!carga.rodando && carga.codigo === 0) return "ok";
+  if (n < carga.etapa) return "ok";
+  if (n > carga.etapa) return "pendente";
+  return carga.rodando ? "rodando" : "falhou";
+}
+
+function resumo() {
+  if (encerrado) return "Programa encerrado. Pode fechar esta aba.";
+  if (!carga) return "Escolha o tamanho da massa e a seed. Cada carga apaga os dados de negócio do banco de destino antes de popular.";
+  if (carga.rodando) return carga.etapa ? `Etapa ${carga.etapa} de 10: ${carga.nome}…` : "Iniciando a carga…";
+  if (carga.codigo !== 0) return "A carga falhou. O erro está no log, na aba Andamento.";
+  return `Carga concluída em ${duracao(carga.segundos)}.`;
+}
+
+// ---------- desenho ----------
+function desenharAviso() {
+  const dados = confirmacao ? ["confirma", confirmacao] : ["erro", erroTela];
+  if (!mudou("aviso", dados)) return;
+  const aviso = $("aviso");
+  aviso.hidden = !dados[1];
+  if (!dados[1]) return;
+  if (confirmacao) {
+    const c = confirmacao;
+    const linhas = [el("span", {}, `Isso apaga todos os dados de negócio em ${c.alvo} e gera a massa “${c.escala}” com a seed ${c.seed}.`)];
+    if (c.faltando.length) {
+      const lista = c.faltando.slice(0, 5).join(", ") + (c.faltando.length > 5 ? ` e mais ${c.faltando.length - 5}` : "");
+      linhas.push(el("span", {}, ` Atenção: faltam ${c.faltando.length} colunas do schema (${lista}). A carga pode falhar no meio; aplique sql/ecociente_schema.sql antes, se puder.`));
+    }
+    const apagar = el("button", { class: "btn perigo", type: "button", onclick: executar }, "Apagar e popular");
+    aviso.replaceChildren(icone("alerta"),
+      el("div", {}, el("strong", {}, "Apagar e popular o banco?"), ...linhas),
+      el("div", { class: "acoes" },
+        el("button", { class: "btn", type: "button", onclick: () => { confirmacao = null; desenhar(); $("popular").focus(); } }, "Cancelar"),
+        apagar));
+    apagar.focus();
+  } else {
+    aviso.replaceChildren(icone("alerta"), el("div", {}, el("strong", {}, "O que aconteceu"), el("span", {}, erroTela)));
+  }
+}
+
+function desenharEtapas() {
+  const etapas = ETAPAS.map((nome, i) => ({ nome, status: statusEtapa(i + 1) }));
+  if (!mudou("etapas", etapas)) return;
+  $("etapas").replaceChildren(...etapas.map((e, i) =>
+    el("li", { "data-status": e.status, "aria-current": e.status === "rodando" ? "step" : "false" },
+      el("span", { class: "marca-etapa" }, ICONE_ETAPA[e.status] ? icone(ICONE_ETAPA[e.status]) : String(i + 1)),
+      e.nome,
+      el("span", { class: "sr" }, ` (${ROTULO_ETAPA[e.status]})`))));
+}
+
+function desenharLog() {
+  const linhas = carga?.log ?? [];
+  if (!mudou("log", linhas)) return;
+  const log = $("log");
+  const noFim = log.scrollHeight - log.scrollTop - log.clientHeight < 24;
+  log.textContent = linhas.length ? linhas.join("\n") : "O log da carga aparece aqui.";
+  if (noFim) log.scrollTop = log.scrollHeight;
+}
+
+function barras(titulo, itens, vazio) {
+  const maior = Math.max(...itens.map((i) => i.valor), 1);
+  return el("section", { class: "cartao grafico" },
+    el("h3", {}, titulo),
+    itens.length
+      ? el("ul", { class: "barras" }, ...itens.map((i) => {
+          const barra = el("i");
+          barra.style.width = `${(100 * i.valor) / maior}%`;
+          return el("li", { title: i.detalhe },
+            el("span", { class: "rotulo" }, i.rotulo), el("span", { class: "trilho" }, barra), el("span", { class: "valor" }, i.texto));
+        }))
+      : el("p", { class: "vazio" }, vazio));
+}
+
+let ordem = { coluna: "linhas", decrescente: true };
+const COLUNAS = [["tabela", "Tabela", false], ["grupo", "Grupo", false], ["linhas", "Linhas", true],
+                 ["pct", "% das linhas", true], ["bytes", "Em disco", true]];
+
+function ordenar(coluna) {
+  // Novo clique na mesma coluna inverte; coluna nova começa pelo maior (ou A-Z nos textos).
+  ordem = ordem.coluna === coluna
+    ? { coluna, decrescente: !ordem.decrescente }
+    : { coluna, decrescente: !["tabela", "grupo"].includes(coluna) };
+  desenharResultado(true);
+}
+
+function desenharResultado(forcar = false) {
+  if (!forcar && !mudou("resultado", [resultado, ordem, rodando()])) return;
+  const painel = $("painel-resultado");
+  if (resultado.estado !== "pronto") {
+    const lendo = resultado.estado === "lendo";
+    painel.replaceChildren(el("div", { class: "cartao vazio" + (resultado.estado === "erro" ? " erro" : "") },
+      el("p", {}, resultado.estado === "erro" ? `Não foi possível ler o banco: ${resultado.mensagem}`
+        : lendo ? "Lendo o banco…"
+        : rodando() ? "Carga em andamento. O resultado aparece aqui quando ela terminar."
+        : "Ainda não há resultado. Rode uma carga, ou leia o que já está no banco."),
+      el("button", { class: "btn", type: "button", disabled: lendo || rodando(), onclick: lerBanco },
+        lendo ? icone("gira") : null, "Ler o banco agora")));
+    return;
+  }
+  const { dados, lidoEm } = resultado;
+  const r = dados.resumo, c = dados.carga;
+  const tabelas = dados.tabelas;
+
+  const numero = (rotulo, valor, nota) =>
+    el("div", {}, el("dt", {}, rotulo), el("dd", {}, valor, nota ? el("small", {}, nota) : null));
+  const vazias = r.vazias;
+  const numeros = el("dl", { class: "cartao numeros" },
+    numero(c ? "Linhas inseridas" : "Linhas no banco", inteiro(r.linhas)),
+    numero("Tabelas populadas", `${r.populadas} de ${r.tabelas}`,
+      vazias.length ? `Vazias: ${vazias.slice(0, 2).join(", ")}${vazias.length > 2 ? ` e mais ${vazias.length - 2}` : ""}` : "Nenhuma vazia"),
+    numero("Duração da carga", c ? duracao(c.segundos) : "—", c ? "Etapas 1 a 10" : null),
+    numero("Linhas por segundo", r.linhas_por_segundo ? inteiro(r.linhas_por_segundo) : "—", c ? "Contando as de triggers" : null),
+    numero("Tamanho do banco", tamanho(dados.bytes_banco), `${percentual(dados.bytes_banco, LIMITE_AIVEN)} do 1 GB da Aiven`));
+
+  const maiores = tabelas.filter((t) => t.linhas).sort((a, b) => b.linhas - a.linhas).slice(0, 10);
+  const graficos = el("div", { class: "graficos" },
+    barras("Tabelas com mais linhas", maiores.map((t) => ({
+      rotulo: t.tabela, valor: t.linhas, texto: inteiro(t.linhas),
+      detalhe: `${t.tabela}: ${inteiro(t.linhas)} linhas, ${percentual(t.linhas, r.linhas)} do total, ${tamanho(t.bytes)} em disco`,
+    })), "O banco não tem nenhuma linha nas tabelas tb_*."),
+    barras("Tempo por etapa da carga", (c?.etapas ?? []).map(([nome, s]) => ({
+      rotulo: nome, valor: s, texto: segundosCurtos(s),
+      detalhe: `${nome}: ${segundosCurtos(s)}, ${percentual(s, c.segundos)} da inserção`,
+    })), "Os tempos só existem logo depois de uma carga feita por esta tela."));
+
+  const chave = { tabela: "tabela", grupo: "grupo", linhas: "linhas", pct: "linhas", bytes: "bytes" }[ordem.coluna];
+  const sinal = ordem.decrescente ? -1 : 1;
+  const linhas = [...tabelas].sort((a, b) =>
+    sinal * (typeof a[chave] === "string" ? a[chave].localeCompare(b[chave], "pt-BR") : a[chave] - b[chave]));
+  const tabela = el("div", { class: "cartao tabela-rolagem" }, el("table", {},
+    el("thead", {}, el("tr", {}, ...COLUNAS.map(([k, titulo, num]) =>
+      el("th", { scope: "col", class: num ? "num" : "", ...(ordem.coluna === k ? { "aria-sort": ordem.decrescente ? "descending" : "ascending" } : {}) },
+        el("button", { type: "button", onclick: () => ordenar(k) }, titulo + (ordem.coluna === k ? (ordem.decrescente ? " ▼" : " ▲") : "")))))),
+    el("tbody", {}, ...linhas.map((t) => el("tr", {},
+      el("th", { scope: "row" }, t.tabela),
+      el("td", {}, t.grupo),
+      el("td", { class: "num" }, inteiro(t.linhas)),
+      el("td", { class: "num" }, percentual(t.linhas, r.linhas)),
+      el("td", { class: "num" }, tamanho(t.bytes)))))));
+
+  const contexto = el("div", { class: "contexto" },
+    el("span", {}, c ? `Massa “${c.escala}”, seed ${c.seed}, concluída às ${c.quando}. Banco lido às ${lidoEm}.`
+      : `Banco lido às ${lidoEm}. Nenhuma carga foi feita nesta sessão, então não há tempos.`),
+    el("button", { class: "btn", type: "button", onclick: lerBanco }, "Ler o banco de novo"));
+  painel.replaceChildren(contexto, numeros, graficos, tabela);
+}
+
+function desenhar() {
+  $("resumo").textContent = resumo();
+  const ocupado = rodando() || verificando || encerrado;
+  for (const id of ["testar", "sortear", "seed"]) $(id).disabled = ocupado;
+  for (const r of document.querySelectorAll('input[name="escala"]')) r.disabled = ocupado;
+  $("popular").disabled = ocupado || !!confirmacao;
+  $("encerrar").disabled = rodando() || encerrado;
+  desenharAviso();
+  desenharEtapas();
+  desenharLog();
+  desenharResultado();
+}
+
+// ---------- servidor ----------
+async function api(caminho, corpo) {
+  const resposta = await fetch(caminho, corpo === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo),
+  });
+  const dados = await resposta.json();
+  if (!resposta.ok) throw new Error(dados.erro || "Erro inesperado.");
+  return dados;
+}
+
+function nota(texto, classe = "") {
+  const n = $("nota-banco");
+  n.textContent = texto;
+  n.className = "nota " + classe;
+}
+
+// Conecta e confere o schema. Devolve {alvo, faltando} ou null (e mostra o erro).
+async function conferirBanco() {
+  verificando = true;
+  nota("Testando a conexão…");
+  desenhar();
+  try {
+    const dados = await api("/api/banco");
+    $("alvo").textContent = dados.alvo;
+    if (dados.erro) {
+      nota(`Não foi possível conectar: ${dados.erro}`, "falha");
+      return null;
+    }
+    nota(dados.faltando.length ? `Conectado, mas faltam ${dados.faltando.length} colunas do schema.` : "Conectado. O banco confere com o schema.",
+      dados.faltando.length ? "falha" : "ok");
+    return dados;
+  } catch (erro) {
+    nota(erro.message, "falha");
+    return null;
+  } finally {
+    verificando = false;
+    desenhar();
+  }
+}
+
+function lerSeed() {
+  const campo = $("seed"), texto = campo.value.trim();
+  const valida = /^-?\d{1,15}$/.test(texto);
+  campo.setAttribute("aria-invalid", !valida);
+  $("nota-seed").textContent = valida ? "A mesma seed gera sempre a mesma massa." : "A seed precisa ser um número inteiro, por exemplo 42.";
+  $("nota-seed").className = "nota" + (valida ? "" : " falha");
+  if (!valida) campo.focus();
+  return valida ? Number(texto) : null;
+}
+
+async function popular() {
+  const seed = lerSeed();
+  if (seed === null) return;
+  erroTela = null;
+  const banco = await conferirBanco();
+  if (!banco) return;
+  confirmacao = { ...banco, escala: document.querySelector('input[name="escala"]:checked').value, seed };
+  desenhar();
+}
+
+async function executar() {
+  const { escala, seed } = confirmacao;
+  confirmacao = null;
+  erroTela = null;
+  resultado = { estado: "vazio" };
+  abrirAba($("aba-andamento"));
+  try {
+    await api("/api/popular", { escala, seed });
+  } catch (erro) {
+    erroTela = erro.message;
+  }
+  await atualizar();
+}
+
+async function lerBanco() {
+  resultado = { estado: "lendo" };
+  desenhar();
+  try {
+    const dados = await api("/api/resultado");
+    resultado = dados.erro ? { estado: "erro", mensagem: dados.erro }
+      : { estado: "pronto", dados, lidoEm: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) };
+  } catch (erro) {
+    resultado = { estado: "erro", mensagem: erro.message };
+  }
+  desenhar();
+  abrirAba($("aba-resultado"));
+}
+
+async function atualizar() {
+  if (encerrado) return;
+  try {
+    const antes = carga?.rodando;
+    const status = await api("/api/status");
+    $("alvo").textContent = status.alvo;
+    carga = status.carga;
+    if (antes && !carga.rodando) {
+      if (carga.codigo === 0) lerBanco();
+      else abrirAba($("aba-andamento"));
+    }
+  } catch {
+    encerrado = true;   // o servidor parou
+  }
+  desenhar();
+}
+
+$("testar").onclick = conferirBanco;
+$("popular").onclick = popular;
+$("sortear").onclick = () => { $("seed").value = 1 + Math.floor(Math.random() * 999999); lerSeed(); };
+$("seed").oninput = lerSeed;
+$("encerrar").onclick = async () => {
+  try { await api("/api/encerrar", {}); encerrado = true; } catch (erro) { erroTela = erro.message; }
+  desenhar();
+};
+
+// Abas: clique ou setas esquerda/direita.
+const abas = [...document.querySelectorAll('[role="tab"]')];
+function abrirAba(aba) {
+  for (const outra of abas) {
+    const ativa = outra === aba;
+    outra.setAttribute("aria-selected", ativa);
+    outra.tabIndex = ativa ? 0 : -1;
+    $(outra.getAttribute("aria-controls")).hidden = !ativa;
+  }
+  if (aba.id === "aba-andamento") $("log").scrollTop = $("log").scrollHeight;
+}
+abas.forEach((aba, i) => {
+  aba.onclick = () => abrirAba(aba);
+  aba.onkeydown = (e) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    const proxima = abas[(i + (e.key === "ArrowRight" ? 1 : abas.length - 1)) % abas.length];
+    proxima.focus();
+    abrirAba(proxima);
+  };
+});
+
+desenhar();
+atualizar();
+setInterval(atualizar, 1000);
+</script>
+</body>
+</html>
