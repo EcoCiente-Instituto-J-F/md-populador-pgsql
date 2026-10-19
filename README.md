@@ -92,7 +92,7 @@ python main.py --escala leve        # carga rápida para desenvolvimento
 python main.py --seed 7 --force     # outra massa, sem confirmação
 python -m tests.test_dau            # self-check do gerador de DAU
 python -m tests.test_schema         # self-check da checagem de schema
-python -m tests.test_ui             # self-check dos cálculos do painel da tela
+python -m tests.test_ui             # self-check da lógica do painel e do servidor da tela
 ```
 
 | Opção | O que faz |
@@ -108,7 +108,7 @@ Se a carga falhar no meio, o script limpa o banco (se preciso, abrindo uma nova 
 
 ## 🖥️ Usando pela tela
 
-Quem preferir não usar a linha de comando pode abrir a tela (tkinter, já vem com o Python):
+Quem preferir não usar a linha de comando pode abrir a tela. Ela sobe um servidor local só na sua máquina (`127.0.0.1:8766`, sem dependência extra) e abre o navegador:
 
 ```bash
 cd src
@@ -126,7 +126,7 @@ Quando a carga termina, a aba **Resultado** mostra um painel só com números da
 
 "Ler o banco agora" monta o mesmo painel a partir do que já está no banco, sem rodar carga (nesse caso não há tempos).
 
-As cores, fontes e espaçamentos da tela ficam no bloco `DESIGN SYSTEM` no topo de `src/ui.py`.
+As cores e fontes da tela ficam nas variáveis CSS no topo de `src/ui_static/index.html`. `Ctrl+C` no terminal (ou "Encerrar programa" na tela) fecha o servidor.
 
 Se a checagem acusar `tb_autenticacoes_api.expira_em`, o banco foi criado com os nomes antigos (`id`, `expirado_em`). Recrie-o com `sql/ecociente_schema.sql`.
 
@@ -336,11 +336,12 @@ SELECT c.nome_condominio, COUNT(*) AS abertas, MIN(p.data_limite_analise) AS ven
 │   └── migracao_dau.sql            # só o DAU, para bancos que já têm o schema
 ├── src/
 │   ├── main.py                     # orquestra a carga (10 etapas) e imprime o resumo
-│   ├── ui.py                       # tela: escala, seed, checagem do banco, progresso e painel da inserção
+│   ├── ui.py                       # servidor local da tela: API JSON, checagem do banco e leitura do progresso
 │   ├── assets/logo_branca.png      # logo usada na tela
 │   ├── tests/test_dau.py           # self-check do gerador de DAU
 │   ├── tests/test_schema.py        # self-check da checagem de schema
-│   ├── tests/test_ui.py            # self-check dos cálculos do painel
+│   ├── ui_static/index.html        # a tela (HTML, CSS e JS puros)
+│   ├── tests/test_ui.py            # self-check da lógica do painel e do servidor
 │   └── utils/
 │       ├── database.py             # volumetria, perfis, geração e inserts
 │       ├── faker_br.py             # gerador de nomes, endereços, CPFs etc. em pt-BR (sem dependência)
