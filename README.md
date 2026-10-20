@@ -1,4 +1,4 @@
-# ♻️ EcoCiente — Populador PostgreSQL
+# EcoCiente — Populador PostgreSQL
 
 ![GitHub repo size](https://img.shields.io/github/repo-size/EcoCiente-Instituto-J-F/md-populador-pgsql?style=for-the-badge)
 ![GitHub language count](https://img.shields.io/github/languages/count/EcoCiente-Instituto-J-F/md-populador-pgsql?style=for-the-badge)
@@ -10,7 +10,7 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14+-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
 ![Aiven](https://img.shields.io/badge/Aiven-Free%20Tier-FF3554?style=for-the-badge)
 
-> Gera uma massa de dados fictícia (pt-BR) para todas as 46 tabelas do banco do **EcoCiente**, com 12 meses de histórico e padrões realistas o bastante para análise (crescimento, sazonalidade, coortes, churn, correlações). Os dados passam pelas *procedures* e *triggers* do próprio banco, nada é recalculado em Python. Também traz a nova gestão de **DAU (usuários ativos diários)**.
+> Gera uma massa de dados fictícia (pt-BR) para todas as 49 tabelas do banco do **EcoCiente**, com 12 meses de histórico e padrões realistas o bastante para análise (crescimento, sazonalidade, coortes, churn, correlações). Os dados passam pelas *procedures* e *triggers* do próprio banco, nada é recalculado em Python. Também traz a nova gestão de **DAU (usuários ativos diários)**.
 
 ### Ajustes e melhorias
 
@@ -214,6 +214,7 @@ SELECT data_referencia, dau, wau, mau, stickiness,
   FROM tb_metricas_dau
  ORDER BY data_referencia;
 ```
+
 </details>
 
 <details>
@@ -225,6 +226,7 @@ SELECT TO_CHAR(data_referencia, 'ID-Dy') AS dia_semana, ROUND(AVG(dau), 1) AS da
  WHERE data_referencia >= CURRENT_DATE - 90
  GROUP BY 1 ORDER BY 1;
 ```
+
 </details>
 
 <details>
@@ -238,6 +240,7 @@ SELECT mes_coorte, usuarios_coorte,
   FROM vw_retencao_coortes_mensais
  GROUP BY 1, 2 ORDER BY 1;
 ```
+
 </details>
 
 <details>
@@ -249,6 +252,7 @@ SELECT nome_tipo, ROUND(AVG(dau), 1) AS dau_medio, ROUND(AVG(minutos_medios), 1)
  WHERE data_atividade >= CURRENT_DATE - 30
  GROUP BY 1 ORDER BY 2 DESC;
 ```
+
 </details>
 
 <details>
@@ -261,6 +265,7 @@ SELECT c.nome_condominio,
   JOIN tb_condominios c ON c.id_condominio = m.condominio_id
  GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
 ```
+
 </details>
 
 <details>
@@ -275,6 +280,7 @@ SELECT cr.nome_categoria, cr.limite_pontos_diario AS teto,
          ON m.postagem_id = p.id_postagem AND m.tipo_movimentacao = 'CREDITO'
  GROUP BY 1, 2 ORDER BY 1;
 ```
+
 </details>
 
 <details>
@@ -287,6 +293,7 @@ SELECT p.triagem_automatica_aprovada AS triagem_aprovou, s.nome_status AS decisa
  WHERE p.resolvido_em IS NOT NULL
  GROUP BY 1, 2 ORDER BY 1, 2;
 ```
+
 </details>
 
 <details>
@@ -300,6 +307,7 @@ SELECT t.nome_cooperativa, t.taxa_comparecimento_percentual, ROUND(AVG(a.nota), 
   JOIN tb_avaliacoes_visitas_coletas a  ON a.visita_coleta_id = v.id_visita_coleta
  GROUP BY 1, 2 ORDER BY 2 DESC;
 ```
+
 </details>
 
 <details>
@@ -313,6 +321,7 @@ SELECT c.titulo_curso, a.ordem, COUNT(*) AS matriculas, COUNT(*) FILTER (WHERE u
  WHERE c.titulo_curso = 'Cidades Sustentáveis'
  GROUP BY 1, 2 ORDER BY 2;
 ```
+
 </details>
 
 <details>
@@ -325,6 +334,7 @@ SELECT c.nome_condominio, COUNT(*) AS abertas, MIN(p.data_limite_analise) AS ven
  WHERE p.resolvido_em IS NULL
  GROUP BY 1 ORDER BY 2 DESC;
 ```
+
 </details>
 
 ## ☁️ Notas sobre o Aiven Free Tier
@@ -339,7 +349,7 @@ SELECT c.nome_condominio, COUNT(*) AS abertas, MIN(p.data_limite_analise) AS ven
 ```
 .
 ├── sql/
-│   ├── ecociente_schema.sql        # DDL completo: 46 tabelas, functions, procedures, triggers, views
+│   ├── ecociente_schema.sql        # DDL completo: 49 tabelas, functions, procedures, triggers, views
 │   ├── migracao_dau.sql            # só o DAU, para bancos que já têm o schema
 │   └── corrige_autenticacoes_api.sql   # renomeia id/expirado_em para os nomes do schema
 ├── src/
