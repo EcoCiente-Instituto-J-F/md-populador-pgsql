@@ -83,6 +83,12 @@ class FakerBR:
             "Apto 12","Apto 34","Sala 201","Conjunto 5","Bloco B Apto 8",
             "Casa 2","Loja 3","Cobertura","Terreo","Fundos",None,None,None,
         ]
+        self._bairros = [
+            "Centro","Jardins","Pinheiros","Vila Mariana","Moema","Itaim Bibi",
+            "Tatuapé","Mooca","Lapa","Perdizes","Santana","Liberdade",
+            "Bela Vista","Vila Madalena","Brooklin","Campo Belo","Ipiranga",
+            "Butantã","Santo Amaro","Vila Olímpia","Penha","Aclimação",
+        ]
 
     # == primitivos =========== 
     def _r(self): return self._rng
@@ -143,6 +149,9 @@ class FakerBR:
 
     def secondary_address(self):
         return self._r().choice(self._complementos)
+
+    def bairro(self):
+        return self._r().choice(self._bairros)
 
     def address_tuple(self):
         """Retorna (uf, cidade, cep, logradouro, numero) -- colunas de tb_enderecos."""
