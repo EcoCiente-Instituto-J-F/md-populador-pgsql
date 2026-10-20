@@ -165,11 +165,13 @@ CREATE TABLE tb_condominios (
     tipo_condominio_id   INTEGER      NOT NULL,
     sindico_id           INTEGER,
     endereco_id          INTEGER,
+    url_foto             VARCHAR(500),
     CONSTRAINT fk_condominios_tipo_condominio_id FOREIGN KEY (tipo_condominio_id) REFERENCES tb_lkp_tipos_condominios (id_tipo_condominio),
     CONSTRAINT fk_condominios_sindico_id FOREIGN KEY (sindico_id) REFERENCES tb_sindicos (id_sindico),
     CONSTRAINT fk_condominios_endereco_id FOREIGN KEY (endereco_id) REFERENCES tb_enderecos (id_endereco),
     CONSTRAINT uq_condominios_endereco_id UNIQUE (endereco_id)
 );
+COMMENT ON COLUMN tb_condominios.url_foto IS 'URL da foto geral do condominio (fachada). Nulo = sem foto cadastrada';
 
 CREATE TABLE tb_torres (
     id_torre       INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
