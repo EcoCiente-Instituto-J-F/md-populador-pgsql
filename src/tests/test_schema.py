@@ -9,8 +9,8 @@ SCHEMA = (Path(__file__).resolve().parents[2] / "sql" / "ecociente_schema.sql").
 
 def test_colunas_esperadas():
     esperado = colunas_esperadas(SCHEMA)
-    assert len(esperado) == 46, "o schema tem 46 tabelas"
-    assert sum(len(c) for c in esperado.values()) == 276, "276 colunas no total (conferido no PostgreSQL 16)"
+    assert len(esperado) == 49, "o schema tem 49 tabelas"
+    assert sum(len(c) for c in esperado.values()) == 299, "299 colunas no total (conferido no PostgreSQL 16)"
     assert esperado["tb_autenticacoes_api"] == {
         "id_autenticao_api", "usuario_id", "token", "tipo_token", "criado_em", "expira_em"}
     assert "tb_metricas_dau" in esperado, "tabelas com IF NOT EXISTS também contam"
