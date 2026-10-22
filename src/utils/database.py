@@ -393,8 +393,8 @@ def popular_motivos_denuncia(cur):
 # 2. ENDEREÇOS E USUÁRIOS (+ SUBTIPOS DE HERANÇA)
 # ==============================================================================
 
-def criar_endereco(cur):
-    uf, cidade, cep, rua, numero = fk.address_tuple()
+def criar_endereco(cur, cidade=None):
+    uf, cidade, cep, rua, numero = fk.address_tuple(cidade)
     return fetch_id(
         cur,
         """INSERT INTO tb_enderecos
@@ -483,8 +483,8 @@ def proximo_codigo_acesso():
     return fk.codigo_acesso(_codigo_acesso_seq)
 
 
-def criar_condominio(cur, tipo_condominio_id, sindico_id, nome_fantasia, comercial=False):
-    endereco_id  = criar_endereco(cur)
+def criar_condominio(cur, tipo_condominio_id, sindico_id, nome_fantasia, comercial=False, cidade=None):
+    endereco_id  = criar_endereco(cur, cidade)
     cnpj         = fk.cnpj() if comercial else (fk.cnpj() if fk.boolean(20) else None)
     codigo_acesso = proximo_codigo_acesso()
     ativo        = fk.boolean(92)
@@ -574,10 +574,10 @@ def recalcular_trust_scores(cur):
 # 4. COOPERATIVAS, PONTOS DE COLETA, CATEGORIAS
 # ==============================================================================
 
-def criar_cooperativa(cur, usuario_id):
+def criar_cooperativa(cur, usuario_id, cidade):
     """Retorna (cooperativa_id, nome, qualidade). `qualidade` (0.55–0.97) é
     latente: move taxa de comparecimento e nota das avaliações da cooperativa."""
-    endereco_id = criar_endereco(cur)
+    endereco_id = criar_endereco(cur, cidade)
     nome        = fk.company()
     cooperativa_id = fetch_id(
         cur,
@@ -594,8 +594,8 @@ def criar_cooperativa(cur, usuario_id):
     return cooperativa_id, nome, round(rng.uniform(0.55, 0.97), 2)
 
 
-def criar_ponto_coleta(cur, cooperativa_id, nome_cooperativa):
-    endereco_id = criar_endereco(cur)
+def criar_ponto_coleta(cur, cooperativa_id, nome_cooperativa, cidade):
+    endereco_id = criar_endereco(cur, cidade)
     nome_ponto  = f"Ecoponto {nome_cooperativa} - {fk.street_name()}"
     return fetch_id(
         cur,
@@ -609,6 +609,15 @@ def criar_ponto_coleta(cur, cooperativa_id, nome_cooperativa):
          fk.random_element(["17:00", "18:00", "20:00", "22:00"]),
          fk.boolean(92)),
     )
+
+
+def sortear_parceiras(cooperativas, cidade, rng, limite=2):
+    """
+    Cooperativas parceiras de um condomínio: só as da mesma cidade, até `limite`.
+    `cooperativas` são tuplas (id, nome, usuario_id, qualidade, cidade).
+    """
+    locais = [c for c in cooperativas if c[4] == cidade]
+    return rng.sample(locais, min(limite, len(locais)))
 
 
 def vincular_categorias_cooperativa(cur, cooperativa_id, categoria_ids_reciclaveis):
@@ -805,13 +814,81 @@ def encerrar_janelas_postagens(cur, seed):
     )
 
 
+def gerar_oscilacoes(data_postagem, resolvido_em, ativa, pendente, rnd):
+    """
+    Sequência de ESTORNO/RESTAURACAO de uma postagem já resolvida. Cada vez que
+    a pontuação sai de ativa gera um ESTORNO, e cada volta, uma RESTAURACAO.
+    A sequência alterna começando por ESTORNO: termina em RESTAURACAO se a
+    pontuação ficou ativa e em ESTORNO se ficou inativa.
+    Postagem ativa e sem pendência não oscila, salvo ~15% dos casos com
+    1 a 3 oscilações extras. Retorna lista de (tipo, ocorrido_em, n), com n o
+    número do evento daquele tipo (chave POSTAGEM:id:TIPO:n).
+    """
+    # pendente = a pontuação mudou depois do crédito, então já houve uma saída
+    saidas = 0 if ativa and not pendente else 1
+    if rnd.random() < 0.15:
+        saidas += rnd.randint(1, 3)
+
+    tipos = ["ESTORNO", "RESTAURACAO"] * saidas
+    if not ativa:
+        tipos.pop()  # terminou inativa: o último evento é o ESTORNO
+    if not tipos:
+        return []
+
+    janela = resolvido_em - data_postagem
+    instantes = sorted(rnd.random() for _ in tipos)
+
+    contagem = {"ESTORNO": 0, "RESTAURACAO": 0}
+    eventos = []
+    for tipo, fracao in zip(tipos, instantes):
+        contagem[tipo] += 1
+        eventos.append((tipo, data_postagem + janela * fracao, contagem[tipo]))
+    return eventos
+
+
+def registrar_oscilacoes_pontos(cur, rnd):
+    """
+    Gera ESTORNO/RESTAURACAO para os CREDITOs de postagens resolvidas (ver
+    gerar_oscilacoes) e zera a flag de reconciliação pendente.
+    """
+    cur.execute(
+        """SELECT m.id_movimentacao, m.postagem_id, m.usuario_id, m.condominio_id, m.torre_id,
+                  m.categoria_id, m.pontos, p.data_postagem, p.resolvido_em,
+                  p.pontuacao_ativa, p.pontuacao_reconciliacao_pendente
+             FROM tb_movimentacoes_pontos m
+             JOIN tb_postagens p ON p.id_postagem = m.postagem_id
+            WHERE m.tipo_movimentacao = 'CREDITO' AND m.origem_tipo = 'POSTAGEM'
+              AND p.resolvido_em IS NOT NULL"""
+    )
+    linhas = []
+    for (credito_id, postagem_id, usuario_id, condominio_id, torre_id, categoria_id, pontos,
+         data_postagem, resolvido_em, ativa, pendente) in cur.fetchall():
+        for tipo, ocorrido_em, n in gerar_oscilacoes(data_postagem, resolvido_em, ativa, pendente, rnd):
+            linhas.append((usuario_id, condominio_id, torre_id, categoria_id, "POSTAGEM", postagem_id,
+                           tipo, pontos, credito_id, f"POSTAGEM:{postagem_id}:{tipo}:{n}", ocorrido_em))
+
+    execute_values(
+        cur,
+        """INSERT INTO tb_movimentacoes_pontos
+               (usuario_id, condominio_id, torre_id, categoria_id, origem_tipo, postagem_id,
+                tipo_movimentacao, pontos, movimentacao_referencia_id, idempotency_key, ocorrido_em)
+           VALUES %s""",
+        linhas, page_size=5000,
+    )
+    cur.execute(
+        """UPDATE tb_postagens SET pontuacao_reconciliacao_pendente = FALSE
+            WHERE resolvido_em IS NOT NULL AND pontuacao_reconciliacao_pendente"""
+    )
+    return len(linhas)
+
+
 def registrar_ledger_pontos(cur, seed):
     """
     Popula tb_movimentacoes_pontos como a API faria:
       - CREDITO provisório na postagem, valor de fn_pontos_disponiveis_postagem
         (respeita o teto diário -- com teto estourado não há crédito);
-      - ESTORNO quando a pontuação ficou inativa (saldo <= -5 / reprovada);
-      - RESTAURACAO quando caiu e depois voltou a ativa;
+      - ESTORNO e RESTAURACAO quando a pontuação sai e volta a ser ativa
+        (registrar_oscilacoes_pontos), inclusive mais de uma vez na mesma postagem;
       - CREDITO de quiz na 1a tentativa aprovada de cada usuário x quiz.
     Só postagens já resolvidas são reconciliadas; as abertas mantêm a flag
     pontuacao_reconciliacao_pendente. ~3% dos eventos recentes ficam sem
@@ -833,37 +910,11 @@ def registrar_ledger_pontos(cur, seed):
                                'POSTAGEM:' || r.id_postagem || ':CREDITO', r.data_postagem);
                    END IF;
                END LOOP;
-           END $$;
-
-           INSERT INTO tb_movimentacoes_pontos
-               (usuario_id, condominio_id, torre_id, categoria_id, origem_tipo, postagem_id,
-                tipo_movimentacao, pontos, movimentacao_referencia_id, idempotency_key, ocorrido_em)
-           SELECT m.usuario_id, m.condominio_id, m.torre_id, m.categoria_id, 'POSTAGEM', m.postagem_id,
-                  'ESTORNO', m.pontos, m.id_movimentacao,
-                  'POSTAGEM:' || m.postagem_id || ':ESTORNO:1',
-                  LEAST(p.data_postagem + INTERVAL '12 hours', p.resolvido_em)
-             FROM tb_movimentacoes_pontos m
-             JOIN tb_postagens p ON p.id_postagem = m.postagem_id
-            WHERE m.tipo_movimentacao = 'CREDITO'
-              AND p.resolvido_em IS NOT NULL
-              AND (p.pontuacao_ativa = FALSE OR p.pontuacao_reconciliacao_pendente);
-
-           INSERT INTO tb_movimentacoes_pontos
-               (usuario_id, condominio_id, torre_id, categoria_id, origem_tipo, postagem_id,
-                tipo_movimentacao, pontos, movimentacao_referencia_id, idempotency_key, ocorrido_em)
-           SELECT m.usuario_id, m.condominio_id, m.torre_id, m.categoria_id, 'POSTAGEM', m.postagem_id,
-                  'RESTAURACAO', m.pontos, m.id_movimentacao,
-                  'POSTAGEM:' || m.postagem_id || ':RESTAURACAO:1', p.resolvido_em
-             FROM tb_movimentacoes_pontos m
-             JOIN tb_postagens p ON p.id_postagem = m.postagem_id
-            WHERE m.tipo_movimentacao = 'CREDITO'
-              AND p.resolvido_em IS NOT NULL
-              AND p.pontuacao_ativa AND p.pontuacao_reconciliacao_pendente;
-
-           UPDATE tb_postagens SET pontuacao_reconciliacao_pendente = FALSE
-            WHERE resolvido_em IS NOT NULL AND pontuacao_reconciliacao_pendente;
-
-           INSERT INTO tb_movimentacoes_pontos
+           END $$;"""
+    )
+    registrar_oscilacoes_pontos(cur, random.Random(seed))
+    cur.execute(
+        """INSERT INTO tb_movimentacoes_pontos
                (usuario_id, condominio_id, torre_id, origem_tipo, tentativa_quiz_id,
                 tipo_movimentacao, pontos, idempotency_key, ocorrido_em)
            SELECT DISTINCT ON (t.usuario_id, t.quiz_id)
@@ -1379,6 +1430,50 @@ def popular_atividades_diarias(cur):
     )
     cur.execute("CALL sp_consolidar_metricas_dau(%s, %s)", (min(l[1] for l in linhas), HOJE))
     return len(linhas)
+
+
+def datar_log_auditoria(cur):
+    """
+    Os triggers gravam tb_log_auditoria.executado_em = now(), ou seja, a hora
+    da carga. Aqui cada linha volta para a data do evento, usando as datas da
+    própria tabela auditada (como encerrar_janelas_postagens faz com resolvido_em):
+      - postagem: INSERT -> data_postagem; UPDATE -> resolvido_em
+      - agendamento: INSERT -> data_inicio; UPDATE -> data_fim ou data_inicio
+      - vínculo usuário x condomínio: INSERT -> data_entrada; UPDATE -> data_saida ou data_entrada
+    Nunca passa de AGORA. O UPDATE de postagem é aproximado: votos anteriores
+    à resolução também geram linha, e não há como ligá-los ao instante exato.
+    """
+    cur.execute(
+        """UPDATE tb_log_auditoria la
+              SET executado_em = LEAST(%(agora)s, CASE WHEN o.nome_operacao = 'INSERT'
+                                                       THEN p.data_postagem
+                                                       ELSE COALESCE(p.resolvido_em, p.data_postagem) END)
+             FROM tb_log_auditoria_postagens lap, tb_postagens p, tb_lkp_tipos_operacoes_auditoria o
+            WHERE lap.auditoria_id = la.id_auditoria
+              AND p.id_postagem = lap.postagem_id
+              AND o.id_tipo_operacao = la.tipo_operacao_id;
+
+           UPDATE tb_log_auditoria la
+              SET executado_em = LEAST(%(agora)s, CASE WHEN o.nome_operacao = 'INSERT'
+                                                       THEN ag.data_inicio
+                                                       ELSE COALESCE(ag.data_fim, ag.data_inicio) END)
+             FROM tb_log_auditoria_agendamentos_coletas lac, tb_agendamentos_coletas ag,
+                  tb_lkp_tipos_operacoes_auditoria o
+            WHERE lac.auditoria_id = la.id_auditoria
+              AND ag.id_agendamento_coleta = lac.agendamento_coleta_id
+              AND o.id_tipo_operacao = la.tipo_operacao_id;
+
+           UPDATE tb_log_auditoria la
+              SET executado_em = LEAST(%(agora)s, CASE WHEN o.nome_operacao = 'INSERT'
+                                                       THEN uc.data_entrada
+                                                       ELSE COALESCE(uc.data_saida, uc.data_entrada) END)
+             FROM tb_log_auditoria_usuarios_condominios luc, tb_rel_usuarios_condominios uc,
+                  tb_lkp_tipos_operacoes_auditoria o
+            WHERE luc.auditoria_id = la.id_auditoria
+              AND uc.id_usuario_condominio = luc.usuario_condominio_id
+              AND o.id_tipo_operacao = la.tipo_operacao_id;""",
+        {"agora": AGORA},
+    )
 
 
 # ==============================================================================
