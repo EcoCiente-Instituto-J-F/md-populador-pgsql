@@ -1,14 +1,11 @@
 # ♻️ EcoCiente — Populador PostgreSQL
 
-![GitHub repo size](https://img.shields.io/github/repo-size/EcoCiente-Instituto-J-F/md-populador-pgsql?style=for-the-badge)
-![GitHub language count](https://img.shields.io/github/languages/count/EcoCiente-Instituto-J-F/md-populador-pgsql?style=for-the-badge)
-![GitHub top language](https://img.shields.io/github/languages/top/EcoCiente-Instituto-J-F/md-populador-pgsql?style=for-the-badge)
-![GitHub last commit](https://img.shields.io/github/last-commit/EcoCiente-Instituto-J-F/md-populador-pgsql?style=for-the-badge)
-![GitHub license](https://img.shields.io/github/license/EcoCiente-Instituto-J-F/md-populador-pgsql?style=for-the-badge)
-
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14+-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
 ![Aiven](https://img.shields.io/badge/Aiven-Free%20Tier-FF3554?style=for-the-badge)
+![GitHub repo size](https://img.shields.io/github/repo-size/EcoCiente-Instituto-J-F/md-populador-pgsql?style=for-the-badge)
+![GitHub last commit](https://img.shields.io/github/last-commit/EcoCiente-Instituto-J-F/md-populador-pgsql?style=for-the-badge)
+![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 
 > Gera uma massa de dados fictícia (pt-BR) para todas as 46 tabelas do banco do **EcoCiente**, com 12 meses de histórico e padrões realistas o bastante para análise (crescimento, sazonalidade, coortes, churn, correlações). Os dados passam pelas *procedures* e *triggers* do próprio banco, nada é recalculado em Python. Também traz a nova gestão de **DAU (usuários ativos diários)**.
 
@@ -131,11 +128,7 @@ Quando a carga termina, a aba **Resultado** mostra um painel só com números da
 
 As cores, fontes e espaçamentos da tela ficam no bloco `DESIGN SYSTEM` no topo de `src/ui.py`.
 
-Se a checagem acusar `tb_autenticacoes_api.expira_em`, o banco foi criado com os nomes antigos (`id`, `expirado_em`). Corrija com:
-
-```bash
-psql "$ECOCIENTE_DSN" -v ON_ERROR_STOP=1 -f sql/corrige_autenticacoes_api.sql
-```
+Se a checagem acusar `tb_autenticacoes_api.expira_em`, o banco foi criado com os nomes antigos (`id`, `expirado_em`). Recrie-o com `sql/ecociente_schema.sql`.
 
 ## 📦 O que é gerado
 
@@ -340,8 +333,7 @@ SELECT c.nome_condominio, COUNT(*) AS abertas, MIN(p.data_limite_analise) AS ven
 .
 ├── sql/
 │   ├── ecociente_schema.sql        # DDL completo: 46 tabelas, functions, procedures, triggers, views
-│   ├── migracao_dau.sql            # só o DAU, para bancos que já têm o schema
-│   └── corrige_autenticacoes_api.sql   # renomeia id/expirado_em para os nomes do schema
+│   └── migracao_dau.sql            # só o DAU, para bancos que já têm o schema
 ├── src/
 │   ├── main.py                     # orquestra a carga (10 etapas) e imprime o resumo
 │   ├── ui.py                       # tela: escala, seed, checagem do banco, progresso e painel da inserção
@@ -355,23 +347,22 @@ SELECT c.nome_condominio, COUNT(*) AS abertas, MIN(p.data_limite_analise) AS ven
 │       ├── helpers.py              # conexão (.env) e helpers de SQL
 │       ├── unique_generator.py     # CPF, e-mail, hash de foto e token sem colisão
 │       └── data/curriculo_ecociente.json   # trilha real de cursos, aulas e quizzes
+├── scripts/pr-bot/                 # gerador da descrição de PR (usado pelo workflow)
+├── .github/workflows/pr-bot.yml    # EcoCiente PR Bot
 ├── .env.example
+├── CONTRIBUTING.md
+├── CODE_OF_CONDUCT.md
+├── SECURITY.md
 └── requirements.txt
 ```
 
-## 📫 Contribuindo para o Populador
+## 📫 Contribuindo
 
-Para contribuir com o Populador, siga estas etapas:
+Leia o [CONTRIBUTING.md](CONTRIBUTING.md) antes de abrir um pull request. Ao participar, você concorda em seguir o [Código de Conduta](CODE_OF_CONDUCT.md).
 
-1. Bifurque este repositório.
-2. Crie um branch: `git checkout -b <nome_branch>`.
-3. Faça suas alterações e confirme-as: `git commit -m '<mensagem_commit>'`
-4. Envie para o branch original: `git push origin <nome_branch>`
-5. Crie a solicitação de pull. O **EcoCiente PR Bot** (`.github/workflows/pr-bot.yml`) gera a descrição automaticamente.
+## 🔒 Segurança
 
-Antes de abrir o PR, rode o schema e o populador em um banco de teste (`--escala leve`) e também `python -m tests.test_dau`.
-
-Como alternativa, consulte a documentação do GitHub em [como criar uma solicitação pull](https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/creating-a-pull-request).
+Encontrou uma vulnerabilidade? Siga o [SECURITY.md](SECURITY.md). **Não abra issue pública.**
 
 ## 🤝 Colaboradores
 
@@ -402,4 +393,4 @@ Agradecemos às seguintes pessoas que contribuíram para este projeto:
 
 ## 📝 Licença
 
-Esse projeto está sob licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE).
