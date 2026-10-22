@@ -144,9 +144,16 @@ class FakerBR:
     def secondary_address(self):
         return self._r().choice(self._complementos)
 
-    def address_tuple(self):
-        """Retorna (uf, cidade, cep, logradouro, numero) -- colunas de tb_enderecos."""
-        uf, cidade, _lat_base, _lng_base = self._r().choice(self._estados_cidades)
+    def cidades(self):
+        return [cidade for _, cidade, _, _ in self._estados_cidades]
+
+    def address_tuple(self, cidade=None):
+        """Retorna (uf, cidade, cep, logradouro, numero) -- colunas de tb_enderecos.
+        Com `cidade`, sorteia só o endereço dentro dela."""
+        opcoes = self._estados_cidades if cidade is None else [
+            e for e in self._estados_cidades if e[1] == cidade
+        ]
+        uf, cidade, _lat_base, _lng_base = self._r().choice(opcoes)
         return (
             uf, cidade,
             self.cep(),
