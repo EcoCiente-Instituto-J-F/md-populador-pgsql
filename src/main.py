@@ -84,7 +84,9 @@ from utils.database import (
     popular_notificacoes,
     popular_autenticacoes_api,
     popular_atividades_diarias,
+    datar_log_auditoria,
     limpar_dados_banco,
+    sortear_parceiras,
 )
 
 ESCALAS = {"leve": 0.3, "medio": 1.0, "pesado": 3.0}
@@ -201,19 +203,24 @@ def main():
             criar_usuario(cur, tipos_usuario["Administrador"], perfil="power", pioneiro=True)
 
         print("[4/10] Cooperativas + pontos de coleta...")
-        cooperativas = []  # (cooperativa_id, nome, usuario_id, qualidade)
+        cooperativas = []  # (cooperativa_id, nome, usuario_id, qualidade, cidade)
         for _ in range(escalar(db.N_COOPERATIVAS, fator)):
             u_coop, _ = criar_usuario(cur, tipos_usuario["Cooperativa"], perfil="power", pioneiro=True)
-            coop_id, coop_nome, qualidade = criar_cooperativa(cur, u_coop)
+            cidade = fk.city()
+            coop_id, coop_nome, qualidade = criar_cooperativa(cur, u_coop, cidade)
             vincular_categorias_cooperativa(cur, coop_id, categorias_reciclaveis)
             for _ in range(rng.randint(*PONTOS_COLETA_POR_COOPERATIVA)):
-                ponto_id = criar_ponto_coleta(cur, coop_id, coop_nome)
+                ponto_id = criar_ponto_coleta(cur, coop_id, coop_nome, cidade)
                 vincular_categorias_ponto_coleta(cur, ponto_id, categorias_reciclaveis)
-            cooperativas.append((coop_id, coop_nome, u_coop, qualidade))
+            cooperativas.append((coop_id, coop_nome, u_coop, qualidade, cidade))
+
+        # condomínios só nascem em cidades com cooperativa, para sempre haver parceira local
+        cidades_com_cooperativa = sorted({c[4] for c in cooperativas})
 
         ocupantes = []  # dicts com usuario_id, condominio_id, torre_id, sindico_usuario_id
         votantes_por_condominio = defaultdict(list)  # vínculo aprovado e ativo, por condomínio
         sindico_por_condominio = {}
+        cidade_por_condominio = {}
 
         def novo_condominio(tipo, comercial):
             tipo_sindico = "Síndico Comercial" if comercial else "Síndico Residencial"
@@ -221,7 +228,10 @@ def main():
                                            perfil="power", comercial=comercial, pioneiro=True)
             sindico_id = criar_subtipo_sindico(cur, sindico_uid)
             nome = fk.edificio_comercial_name() if comercial else fk.condominio_name()
-            condominio_id = criar_condominio(cur, tipos_condominio[tipo], sindico_id, nome, comercial=comercial)
+            cidade = rng.choice(cidades_com_cooperativa)
+            condominio_id = criar_condominio(cur, tipos_condominio[tipo], sindico_id, nome,
+                                             comercial=comercial, cidade=cidade)
+            cidade_por_condominio[condominio_id] = cidade
             # síndico também vota, com peso 3 (nível "sindico")
             criar_vinculo_condominio(cur, sindico_uid, condominio_id,
                                      nivel_confianca_id=niveis["sindico"], aprovado=True)
@@ -269,9 +279,9 @@ def main():
         print("[8/10] Agendamentos, recorrências, visitas e avaliações...")
         qtd_visitas = 0
         for condominio_id, sindico_uid in sindico_por_condominio.items():
-            parceiras = rng.sample(cooperativas, min(2, len(cooperativas)))
+            parceiras = sortear_parceiras(cooperativas, cidade_por_condominio[condominio_id], rng)
             for _ in range(rng.randint(*AGENDAMENTOS_POR_CONDOMINIO)):
-                coop_id, _, _, qualidade = rng.choice(parceiras)
+                coop_id, _, _, qualidade, _ = rng.choice(parceiras)
                 data_inicio = AGORA + timedelta(days=rng.uniform(-DIAS_HISTORICO, 45))
                 futuro = data_inicio > AGORA
                 if futuro:
@@ -319,6 +329,9 @@ def main():
         qtd_tokens = popular_autenticacoes_api(cur, list(USUARIOS))
         print(f"      -> {qtd_matriculas} matrículas, {qtd_tentativas} tentativas de quiz, "
               f"{qtd_notificacoes} notificações, {qtd_tokens} tokens.")
+
+        # depois de todas as tabelas auditadas (postagens, agendamentos, vínculos)
+        datar_log_auditoria(cur)
 
         print("[10/10] Atividade diária (DAU) + sp_consolidar_metricas_dau...")
         qtd_dau = popular_atividades_diarias(cur)
