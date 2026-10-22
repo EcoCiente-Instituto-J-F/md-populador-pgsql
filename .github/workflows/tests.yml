@@ -30,3 +30,5 @@ jobs:
           python -m tests.test_dau
           python -m tests.test_schema
           python -m tests.test_ui
+          python -m tests.test_ledger
+          python -m tests.test_parceria

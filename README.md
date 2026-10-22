@@ -20,9 +20,9 @@ O projeto ainda está em desenvolvimento e as próximas atualizações serão vo
 - [x] Perfis de engajamento, abandono, sazonalidade e campanha para análises com sinal real
 - [x] Carga em lote (`execute_values` + loops no servidor), pensada para a latência do Aiven
 - [x] Escalas `leve` / `medio` / `pesado`
-- [ ] Datar `tb_log_auditoria.executado_em` com a data do evento (hoje todas as linhas ficam com a data da carga)
-- [ ] Casar cooperativa e condomínio pela cidade (hoje a parceria é sorteada)
-- [ ] Oscilações múltiplas de pontuação (mais de um ESTORNO/RESTAURAÇÃO por postagem)
+- [x] Datar `tb_log_auditoria.executado_em` com a data do evento (hoje todas as linhas ficam com a data da carga)
+- [x] Casar cooperativa e condomínio pela cidade (hoje a parceria é sorteada)
+- [x] Oscilações múltiplas de pontuação (mais de um ESTORNO/RESTAURAÇÃO por postagem)
 
 ## 💻 Pré-requisitos
 
@@ -93,6 +93,8 @@ python main.py --seed 7 --force     # outra massa, sem confirmação
 python -m tests.test_dau            # self-check do gerador de DAU
 python -m tests.test_schema         # self-check da checagem de schema
 python -m tests.test_ui             # self-check dos cálculos do painel da tela
+python -m tests.test_ledger         # self-check das oscilações de pontuação
+python -m tests.test_parceria       # self-check da parceria pela cidade
 ```
 
 | Opção | O que faz |
@@ -169,8 +171,8 @@ A ideia é que qualquer gráfico mostre um padrão, e não ruído uniforme:
 | **Moderação** | Os votos são ponderados pelo nível de confiança (síndico = 3). Resultado final: cerca de 80% aprovadas, 15% reprovadas e 4% em análise. As postagens das últimas 24h continuam abertas, como uma fila de moderação real. |
 | **Triagem automática** | `triagem_automatica_aprovada` concorda com a decisão final em ~84% dos casos, com confiança mais baixa quando erra. Dá para montar uma matriz de confusão contra a decisão da comunidade. |
 | **Trust score** | Vem de `sp_atualizar_trust_score`. Alguns usuários `power` passam de 200 e são promovidos a `pessoa_confiavel` (6 na escala `medio`). |
-| **Pontos** | Há CRÉDITO por postagem (respeitando o teto diário, já que rajadas de descarte no mesmo dia estouram o limite), ESTORNO nas reprovadas, RESTAURAÇÃO quando a postagem se recupera e CRÉDITO na 1ª aprovação de cada quiz. Cerca de 10% dos eventos das últimas 48h ficam pendentes de sincronizar com o Redis, alguns com erro registrado. |
-| **Cooperativas** | Cada cooperativa tem uma "qualidade" oculta que move ao mesmo tempo a taxa de comparecimento e a nota das avaliações. As duas métricas se correlacionam. |
+| **Pontos** | Há CRÉDITO por postagem (respeitando o teto diário, já que rajadas de descarte no mesmo dia estouram o limite), ESTORNO quando a pontuação sai de ativa, RESTAURAÇÃO quando volta (às vezes mais de uma vez na mesma postagem) e CRÉDITO na 1ª aprovação de cada quiz. Cerca de 10% dos eventos das últimas 48h ficam pendentes de sincronizar com o Redis, alguns com erro registrado. |
+| **Cooperativas** | Cada condomínio é atendido só por cooperativas da mesma cidade. Cada cooperativa tem uma "qualidade" oculta que move ao mesmo tempo a taxa de comparecimento e a nota das avaliações. As duas métricas se correlacionam. |
 | **Ensino** | O usuário avança aula a aula e abandona o curso quando não conclui uma delas, o que forma um funil de conclusão. Quem reprova no quiz tenta de novo em ~55% dos casos, e ~5% das tentativas ficam abandonadas no meio. |
 
 ## 📈 DAU — Usuários ativos diários
@@ -350,6 +352,8 @@ SELECT c.nome_condominio, COUNT(*) AS abertas, MIN(p.data_limite_analise) AS ven
 │   ├── tests/test_dau.py           # self-check do gerador de DAU
 │   ├── tests/test_schema.py        # self-check da checagem de schema
 │   ├── tests/test_ui.py            # self-check dos cálculos do painel
+│   ├── tests/test_ledger.py        # self-check das oscilações de pontuação
+│   ├── tests/test_parceria.py      # self-check da parceria pela cidade
 │   └── utils/
 │       ├── database.py             # volumetria, perfis, geração e inserts
 │       ├── faker_br.py             # gerador de nomes, endereços, CPFs etc. em pt-BR (sem dependência)

@@ -30,6 +30,8 @@ cd src
 python -m tests.test_dau
 python -m tests.test_schema
 python -m tests.test_ui
+python -m tests.test_ledger
+python -m tests.test_parceria
 ```
 
 Se sua mudança mexe na carga, rode também o populador em um banco de teste:
