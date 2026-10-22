@@ -1,0 +1,7 @@
+.git
+.github
+.venv
+.env
+__pycache__/
+*.pyc
+to-do.md

@@ -106,6 +106,15 @@ python -m tests.test_ui             # self-check dos cálculos do painel da tela
 
 Se a carga falhar no meio, o script limpa o banco (se preciso, abrindo uma nova conexão) e sai com código `1`.
 
+### Com Docker
+
+A imagem roda só a linha de comando (a tela tkinter precisa de ambiente gráfico). Sem terminal interativo não dá para confirmar o `TRUNCATE`, então passe `--force`:
+
+```bash
+docker build -t ecociente-populador .
+docker run --rm --env-file .env ecociente-populador --escala leve --force
+```
+
 ## 🖥️ Usando pela tela
 
 Quem preferir não usar a linha de comando pode abrir a tela (tkinter, já vem com o Python):
@@ -348,8 +357,14 @@ SELECT c.nome_condominio, COUNT(*) AS abertas, MIN(p.data_limite_analise) AS ven
 │       ├── unique_generator.py     # CPF, e-mail, hash de foto e token sem colisão
 │       └── data/curriculo_ecociente.json   # trilha real de cursos, aulas e quizzes
 ├── scripts/pr-bot/                 # gerador da descrição de PR (usado pelo workflow)
-├── .github/workflows/pr-bot.yml    # EcoCiente PR Bot
+├── .github/
+│   ├── workflows/pr-bot.yml        # EcoCiente PR Bot
+│   ├── workflows/tests.yml         # CI: roda os self-checks
+│   └── pull_request_template.md    # template de PR (com marcadores do bot)
 ├── .env.example
+├── .python-version                 # 3.10
+├── Dockerfile                      # imagem da linha de comando
+├── .dockerignore
 ├── CONTRIBUTING.md
 ├── CODE_OF_CONDUCT.md
 ├── SECURITY.md

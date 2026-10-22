@@ -23,7 +23,7 @@ Preencha o `.env` com os dados do seu banco de teste. O `.env` está no `.gitign
 
 ## Testando sua mudança
 
-O repositório ainda não tem um workflow de CI que rode os testes. Rode os self-checks a partir da pasta `src/`:
+O CI (`.github/workflows/tests.yml`) roda estes mesmos self-checks, com Python 3.10, a partir da pasta `src/`:
 
 ```bash
 cd src
@@ -60,7 +60,7 @@ Regras para os testes:
 
 1. Crie um branch a partir da `main` (ex.: `feat/minha-mudanca`).
 2. Faça commits focados, com prefixos: `feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`.
-3. Abra o PR para a `main`. O **EcoCiente PR Bot** (`.github/workflows/pr-bot.yml`) gera a descrição automaticamente nos PRs de branches do próprio repositório.
+3. Abra o PR para a `main` e preencha o checklist do [template](.github/pull_request_template.md). O CI precisa passar. O **EcoCiente PR Bot** (`.github/workflows/pr-bot.yml`) gera a descrição automaticamente nos PRs de branches do próprio repositório.
 4. Um mantenedor revisa o PR antes do merge.
 
 ## Reportando bugs e propondo funcionalidades
