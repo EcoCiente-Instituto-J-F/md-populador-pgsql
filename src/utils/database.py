@@ -488,16 +488,17 @@ def criar_condominio(cur, tipo_condominio_id, sindico_id, nome_fantasia, comerci
     cnpj         = fk.cnpj() if comercial else (fk.cnpj() if fk.boolean(20) else None)
     codigo_acesso = proximo_codigo_acesso()
     ativo        = fk.boolean(92)
+    url_foto     = fk.url(path="condominios", ext="jpg") if fk.boolean(85) else None
 
     return fetch_id(
         cur,
         """INSERT INTO tb_condominios
                (nome_condominio, cnpj, codigo_acesso, ativo,
-                tipo_condominio_id, sindico_id, endereco_id)
-           VALUES (%s, %s, %s, %s, %s, %s, %s)
+                tipo_condominio_id, sindico_id, endereco_id, url_foto)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
            RETURNING id_condominio""",
         (nome_fantasia, cnpj, codigo_acesso, ativo,
-         tipo_condominio_id, sindico_id, endereco_id),
+         tipo_condominio_id, sindico_id, endereco_id, url_foto),
     )
 
 
@@ -1143,7 +1144,9 @@ def popular_quizzes(cur, cursos_ids, aulas_por_curso):
     """
     Cria os 20 quizzes reais da trilha, cada um na última aula do seu curso
     âncora (aulas_por_curso[curso][-1]), com as perguntas/alternativas reais
-    do banco de quizzes.
+    do banco de quizzes. Idempotente: se já houver perguntas no banco, só preenche
+    a explicação das que ainda estiverem sem (não sobrescreve edições). No fluxo do
+    main.py as tabelas são truncadas antes, então esse caminho não roda ali.
 
     Retorna {aula_id: {"quiz_id", "nota_minima", "perguntas": [(pergunta_id, [(alt_id, correta), ...]), ...]}}
     -- só as aulas que têm quiz aparecem nesse dict.
@@ -1175,14 +1178,24 @@ def popular_quizzes(cur, cursos_ids, aulas_por_curso):
             )
 
         cur.execute(
-            "SELECT id_pergunta FROM tb_perguntas_quiz WHERE quiz_id = %s ORDER BY ordem",
+            "SELECT id_pergunta, ordem FROM tb_perguntas_quiz WHERE quiz_id = %s ORDER BY ordem",
             (quiz_id,),
         )
         perguntas_existentes = cur.fetchall()
 
         perguntas = []
         if perguntas_existentes:
-            for (pergunta_id,) in perguntas_existentes:
+            # preenche só onde a explicação é nula, para não sobrescrever o que foi editado
+            execute_values(
+                cur,
+                """UPDATE tb_perguntas_quiz p SET explicacao = v.explicacao
+                   FROM (VALUES %s) AS v(id_pergunta, explicacao)
+                   WHERE p.id_pergunta = v.id_pergunta AND p.explicacao IS NULL""",
+                [(pergunta_id, quiz["perguntas"][ordem - 1].get("explicacao"))
+                 for pergunta_id, ordem in perguntas_existentes
+                 if 1 <= ordem <= len(quiz["perguntas"])],
+            )
+            for pergunta_id, _ in perguntas_existentes:
                 cur.execute(
                     "SELECT id_alternativa, correta FROM tb_alternativas_quiz WHERE pergunta_id = %s",
                     (pergunta_id,),
@@ -1192,9 +1205,9 @@ def popular_quizzes(cur, cursos_ids, aulas_por_curso):
             for ordem, pergunta in enumerate(quiz["perguntas"], start=1):
                 pergunta_id = fetch_id(
                     cur,
-                    """INSERT INTO tb_perguntas_quiz (quiz_id, enunciado, ordem)
-                       VALUES (%s, %s, %s) RETURNING id_pergunta""",
-                    (quiz_id, pergunta["enunciado"], ordem),
+                    """INSERT INTO tb_perguntas_quiz (quiz_id, enunciado, ordem, explicacao)
+                       VALUES (%s, %s, %s, %s) RETURNING id_pergunta""",
+                    (quiz_id, pergunta["enunciado"], ordem, pergunta.get("explicacao")),
                 )
                 linhas = execute_values(
                     cur,
