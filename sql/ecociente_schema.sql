@@ -438,9 +438,11 @@ CREATE TABLE tb_perguntas_quiz (
     quiz_id      INTEGER NOT NULL,
     enunciado    TEXT    NOT NULL,
     ordem        INTEGER NOT NULL,
+    explicacao   TEXT,
     CONSTRAINT fk_perguntas_quiz_quiz_id FOREIGN KEY (quiz_id) REFERENCES tb_quizzes (id_quiz) ON UPDATE CASCADE,
     CONSTRAINT perguntas_quiz_index_12 UNIQUE (quiz_id, ordem)
 );
+COMMENT ON COLUMN tb_perguntas_quiz.explicacao IS 'Explicacao da resposta correta, exibida depois que o usuario responde. Nulo = sem explicacao cadastrada';
 
 CREATE TABLE tb_alternativas_quiz (
     id_alternativa     INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
