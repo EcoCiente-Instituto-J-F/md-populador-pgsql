@@ -56,6 +56,15 @@ psql "$ECOCIENTE_DSN" -v ON_ERROR_STOP=1 -f sql/migracao_dau.sql
 
 O populador também precisa de `tb_movimentacoes_pontos` e `tb_autenticacoes_api`. Se o seu banco é anterior a essas tabelas, recrie-o com `sql/ecociente_schema.sql`.
 
+Um banco criado antes das colunas `url_foto` (foto do condomínio) e `explicacao` (explicação da resposta correta do quiz) também precisa delas, senão os INSERTs do populador falham:
+
+```sql
+ALTER TABLE tb_condominios    ADD COLUMN IF NOT EXISTS url_foto   VARCHAR(500);
+ALTER TABLE tb_perguntas_quiz ADD COLUMN IF NOT EXISTS explicacao TEXT;
+```
+
+Depois do `ALTER`, basta rodar o populador normalmente: cada execução apaga e recria os dados, então as explicações vêm do `curriculo_ecociente.json` (edições feitas direto no banco se perdem).
+
 > [!NOTE]
 > A versão anterior do schema não subia: os CHECKs de `tb_autenticacoes_api` citavam `token_type` e `expires_in`, mas as colunas se chamam `tipo_token` e `expira_em`. O erro desfazia o script inteiro. Isso já está corrigido em `sql/ecociente_schema.sql`.
 
@@ -96,6 +105,7 @@ python main.py --escala leve        # carga rápida para desenvolvimento
 python main.py --seed 7 --force     # outra massa, sem confirmação
 python -m tests.test_dau            # self-check do gerador de DAU
 python -m tests.test_schema         # self-check da checagem de schema
+python -m tests.test_curriculo      # self-check do conteúdo da trilha (explicação em todas as perguntas)
 python -m tests.test_ui             # self-check da lógica do painel e do servidor da tela
 ```
 
