@@ -1126,6 +1126,15 @@ def popular_cursos_e_aulas(cur):
         existentes = [r[0] for r in cur.fetchall()]
         if existentes:
             aulas_por_curso[titulo] = existentes
+            # Banco já populado: mantém os ids (quizzes e matrículas apontam para eles), mas
+            # atualiza o texto das aulas para a versão expandida do JSON.
+            for aula in curso["aulas"]:
+                cur.execute(
+                    """UPDATE tb_aulas SET conteudo_aula = %s
+                       WHERE curso_id = %s AND ordem = %s
+                         AND conteudo_aula IS DISTINCT FROM %s""",
+                    (aula["conteudo_aula"], curso_id, aula["ordem"], aula["conteudo_aula"]),
+                )
             continue
 
         aulas = sorted(curso["aulas"], key=lambda a: a["ordem"])
