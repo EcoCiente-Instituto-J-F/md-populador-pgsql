@@ -611,7 +611,7 @@ CREATE UNIQUE INDEX uq_mov_pontos_credito_quiz
     WHERE origem_tipo = 'QUIZ' AND tipo_movimentacao = 'CREDITO';
 
 CREATE INDEX idx_esqueci_senha_usuario_id
-    ON tb_esqueci_senha (usuario_id);
+    ON tb_recuperacoes_senha (usuario_id);
 
 -- Indices minimos para historico, retry Redis e calculo de teto diario.
 CREATE INDEX idx_mov_pontos_usuario_ocorrido
@@ -2161,7 +2161,7 @@ COMMENT ON COLUMN tb_metricas_dau.mau IS 'Usuarios distintos ativos nos 30 dias 
 COMMENT ON COLUMN tb_metricas_dau.novos_usuarios IS 'Usuarios cuja primeira atividade registrada e data_referencia';
 COMMENT ON COLUMN tb_metricas_dau.stickiness IS 'DAU / MAU * 100';
 
-CREATE TABLE tb_esqueci_senha (
+CREATE TABLE tb_recuperacoes_senha (
     id_esqueci_senha INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     usuario_id       INTEGER      NOT NULL,
     token_hash       VARCHAR(255) NOT NULL,
