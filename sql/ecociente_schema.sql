@@ -610,6 +610,9 @@ CREATE UNIQUE INDEX uq_mov_pontos_credito_quiz
     ON tb_movimentacoes_pontos (tentativa_quiz_id)
     WHERE origem_tipo = 'QUIZ' AND tipo_movimentacao = 'CREDITO';
 
+CREATE INDEX idx_esqueci_senha_usuario_id
+    ON tb_esqueci_senha (usuario_id);
+
 -- Indices minimos para historico, retry Redis e calculo de teto diario.
 CREATE INDEX idx_mov_pontos_usuario_ocorrido
     ON tb_movimentacoes_pontos (usuario_id, ocorrido_em);
@@ -2158,6 +2161,20 @@ COMMENT ON COLUMN tb_metricas_dau.mau IS 'Usuarios distintos ativos nos 30 dias 
 COMMENT ON COLUMN tb_metricas_dau.novos_usuarios IS 'Usuarios cuja primeira atividade registrada e data_referencia';
 COMMENT ON COLUMN tb_metricas_dau.stickiness IS 'DAU / MAU * 100';
 
+CREATE TABLE tb_esqueci_senha (
+    id_esqueci_senha INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    usuario_id       INTEGER      NOT NULL,
+    token_hash       VARCHAR(255) NOT NULL,
+    expira_em        TIMESTAMPTZ  NOT NULL,
+    utilizado_em     TIMESTAMPTZ,
+
+    CONSTRAINT fk_esqueci_senha_usuario_id
+        FOREIGN KEY (usuario_id)
+        REFERENCES tb_usuarios (id_usuario),
+
+    CONSTRAINT uq_esqueci_senha_token_hash
+        UNIQUE (token_hash)
+);
 -- ----------------------------------------------------------------------------
 -- PROCEDURE 5: sp_consolidar_metricas_dau
 -- Recalcula tb_metricas_dau para cada dia do intervalo. Idempotente (UPSERT):
