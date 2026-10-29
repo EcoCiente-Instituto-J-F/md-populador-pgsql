@@ -28,7 +28,8 @@ CREATE TABLE tb_lkp_tipos_condominios (
 );
 CREATE TABLE tb_lkp_status_agendamentos (
     id_status   INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    nome_status VARCHAR(50) NOT NULL
+    nome_status VARCHAR(50) NOT NULL,
+    CONSTRAINT uq_lkp_status_agendamentos_nome_status UNIQUE (nome_status)
 );
 
 CREATE TABLE tb_lkp_dias_semanas (
@@ -102,6 +103,7 @@ CREATE TABLE tb_enderecos (
     cep           VARCHAR(10),
     estado        CHAR(2),
     cidade        VARCHAR(100),
+    bairro        VARCHAR(100),
     logradouro    VARCHAR(150),
     numero        VARCHAR(20),
     complemento   VARCHAR(100)
@@ -163,26 +165,34 @@ CREATE TABLE tb_condominios (
     tipo_condominio_id   INTEGER      NOT NULL,
     sindico_id           INTEGER,
     endereco_id          INTEGER,
+    url_foto             VARCHAR(500),
     CONSTRAINT fk_condominios_tipo_condominio_id FOREIGN KEY (tipo_condominio_id) REFERENCES tb_lkp_tipos_condominios (id_tipo_condominio),
     CONSTRAINT fk_condominios_sindico_id FOREIGN KEY (sindico_id) REFERENCES tb_sindicos (id_sindico),
     CONSTRAINT fk_condominios_endereco_id FOREIGN KEY (endereco_id) REFERENCES tb_enderecos (id_endereco),
     CONSTRAINT uq_condominios_endereco_id UNIQUE (endereco_id)
 );
+COMMENT ON COLUMN tb_condominios.url_foto IS 'URL da foto geral do condominio (fachada). Nulo = sem foto cadastrada';
 
 CREATE TABLE tb_torres (
     id_torre       INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     nome_torre     VARCHAR(100) NOT NULL,
     condominio_id  INTEGER      NOT NULL,
     CONSTRAINT fk_torres_condominio_id FOREIGN KEY (condominio_id) REFERENCES tb_condominios (id_condominio),
-    CONSTRAINT torres_index_0 UNIQUE (condominio_id, nome_torre)
+    CONSTRAINT torres_index_0 UNIQUE (condominio_id, nome_torre),
+    -- Alvo da FK composta de tb_moradores: garante torre do mesmo condominio
+    CONSTRAINT uq_torres_id_condominio UNIQUE (id_torre, condominio_id)
 );
 CREATE TABLE tb_moradores (
     id_morador  INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     condominio_id    INTEGER      NOT NULL,
     usuario_id  INTEGER NOT NULL,
+    torre_id    INTEGER,
     CONSTRAINT fk_moradores_usuario_id FOREIGN KEY (usuario_id) REFERENCES tb_usuarios (id_usuario),
     CONSTRAINT uq_moradores_usuario_id UNIQUE (usuario_id),
-    CONSTRAINT fk_moradores_condominio_id FOREIGN KEY (condominio_id) REFERENCES tb_condominios (id_condominio));
+    CONSTRAINT fk_moradores_condominio_id FOREIGN KEY (condominio_id) REFERENCES tb_condominios (id_condominio),
+    CONSTRAINT fk_moradores_torre_condominio FOREIGN KEY (torre_id, condominio_id)
+        REFERENCES tb_torres (id_torre, condominio_id));
+COMMENT ON COLUMN tb_moradores.torre_id IS 'Torre onde o morador mora. Nulo em condominio sem torres (comercial). A FK composta impede torre de outro condominio';
 
 -- ============================================================================
 -- SECAO 4 - COOPERATIVAS E PONTOS DE COLETA
@@ -339,6 +349,14 @@ CREATE TABLE tb_agendamentos_coletas (
     data_inicio             TIMESTAMPTZ  NOT NULL,
     data_fim                TIMESTAMPTZ,
     possui_recorrencia      BOOLEAN      NOT NULL DEFAULT FALSE,
+    solicitado_por_usuario_id  INTEGER      NOT NULL,
+    origem_solicitacao         VARCHAR(20)  NOT NULL,
+    respondido_por_usuario_id  INTEGER,
+    respondido_em              TIMESTAMPTZ,
+    CONSTRAINT fk_agendamentos_coletas_solicitado_por_usuario_id FOREIGN KEY (solicitado_por_usuario_id) REFERENCES tb_usuarios (id_usuario),
+    CONSTRAINT fk_agendamentos_coletas_respondido_por_usuario_id FOREIGN KEY (respondido_por_usuario_id) REFERENCES tb_usuarios (id_usuario),
+    CONSTRAINT ck_agendamentos_coletas_origem_solicitacao CHECK (origem_solicitacao IN ('CONDOMINIO', 'COOPERATIVA')),
+    CONSTRAINT ck_agendamentos_coletas_resposta CHECK ((respondido_por_usuario_id IS NULL) = (respondido_em IS NULL)),
     CONSTRAINT fk_agendamentos_coletas_condominio_id FOREIGN KEY (condominio_id) REFERENCES tb_condominios (id_condominio),
     CONSTRAINT fk_agendamentos_coletas_cooperativa_id FOREIGN KEY (cooperativa_id) REFERENCES tb_cooperativas (id_cooperativa),
     CONSTRAINT fk_agendamentos_coletas_status_agendamento_id FOREIGN KEY (status_agendamento_id) REFERENCES tb_lkp_status_agendamentos (id_status),
@@ -420,9 +438,11 @@ CREATE TABLE tb_perguntas_quiz (
     quiz_id      INTEGER NOT NULL,
     enunciado    TEXT    NOT NULL,
     ordem        INTEGER NOT NULL,
+    explicacao   TEXT,
     CONSTRAINT fk_perguntas_quiz_quiz_id FOREIGN KEY (quiz_id) REFERENCES tb_quizzes (id_quiz) ON UPDATE CASCADE,
     CONSTRAINT perguntas_quiz_index_12 UNIQUE (quiz_id, ordem)
 );
+COMMENT ON COLUMN tb_perguntas_quiz.explicacao IS 'Explicacao da resposta correta, exibida depois que o usuario responde. Nulo = sem explicacao cadastrada';
 
 CREATE TABLE tb_alternativas_quiz (
     id_alternativa     INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -589,6 +609,9 @@ CREATE UNIQUE INDEX uq_mov_pontos_credito_postagem
 CREATE UNIQUE INDEX uq_mov_pontos_credito_quiz
     ON tb_movimentacoes_pontos (tentativa_quiz_id)
     WHERE origem_tipo = 'QUIZ' AND tipo_movimentacao = 'CREDITO';
+
+CREATE INDEX idx_esqueci_senha_usuario_id
+    ON tb_recuperacoes_senha (usuario_id);
 
 -- Indices minimos para historico, retry Redis e calculo de teto diario.
 CREATE INDEX idx_mov_pontos_usuario_ocorrido
@@ -1624,6 +1647,10 @@ CREATE INDEX IF NOT EXISTS idx_tentativas_quiz_quiz_id
 
 CREATE INDEX IF NOT EXISTS idx_moradores_condominio_id
     ON tb_moradores (condominio_id);
+-- Moradores por torre (ranking/listagem) e FK composta
+CREATE INDEX IF NOT EXISTS idx_moradores_torre_condominio
+    ON tb_moradores (torre_id, condominio_id)
+    WHERE torre_id IS NOT NULL;
 
 
 -- ============================================================================
@@ -2134,6 +2161,20 @@ COMMENT ON COLUMN tb_metricas_dau.mau IS 'Usuarios distintos ativos nos 30 dias 
 COMMENT ON COLUMN tb_metricas_dau.novos_usuarios IS 'Usuarios cuja primeira atividade registrada e data_referencia';
 COMMENT ON COLUMN tb_metricas_dau.stickiness IS 'DAU / MAU * 100';
 
+CREATE TABLE tb_recuperacoes_senha (
+    id_esqueci_senha INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    usuario_id       INTEGER      NOT NULL,
+    token_hash       VARCHAR(255) NOT NULL,
+    expira_em        TIMESTAMPTZ  NOT NULL,
+    utilizado_em     TIMESTAMPTZ,
+
+    CONSTRAINT fk_esqueci_senha_usuario_id
+        FOREIGN KEY (usuario_id)
+        REFERENCES tb_usuarios (id_usuario),
+
+    CONSTRAINT uq_esqueci_senha_token_hash
+        UNIQUE (token_hash)
+);
 -- ----------------------------------------------------------------------------
 -- PROCEDURE 5: sp_consolidar_metricas_dau
 -- Recalcula tb_metricas_dau para cada dia do intervalo. Idempotente (UPSERT):
@@ -2253,11 +2294,383 @@ JOIN tamanho t ON t.mes_coorte = a.mes_coorte
 WHERE a.mes_relativo >= 0
 GROUP BY a.mes_coorte, t.usuarios_coorte, a.mes_relativo;
 
+-- ============================================================================
+-- SECAO 16 - MIGRACAO (MAPA DE IDS LEGADO -> NOVO)
+-- ============================================================================
+-- Tabela de apoio do RPA de migracao: guarda, por entidade, qual id do banco
+-- legado virou qual id neste schema. Garante idempotencia (reexecucao nao
+-- duplica) e permite resolver FKs das entidades dependentes.
+-- Sem FK em novo_id de proposito: a coluna aponta para tabelas diferentes
+-- conforme a entidade.
+CREATE TABLE IF NOT EXISTS tb_migracao_ids_map (
+    entidade   TEXT        NOT NULL,
+    legacy_id  BIGINT      NOT NULL,
+    novo_id    BIGINT      NOT NULL,
+    migrado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT pk_migracao_ids_map PRIMARY KEY (entidade, legacy_id)
+);
+COMMENT ON TABLE tb_migracao_ids_map IS 'Mapa de ids legado -> novo usado pelo RPA de migracao (idempotencia e resolucao de FKs)';
+COMMENT ON COLUMN tb_migracao_ids_map.entidade IS 'Nome logico da entidade migrada (ex.: usuarios, condominios, postagens)';
+
+-- Busca reversa (novo -> legado) para auditoria e rollback da migracao.
+-- Nao e UNIQUE: varios registros legados podem convergir para o mesmo id novo (deduplicacao).
+CREATE INDEX IF NOT EXISTS idx_migracao_ids_map_entidade_novo_id
+    ON tb_migracao_ids_map (entidade, novo_id);
+
+-- ============================================================================
+-- SECAO 17 - SOLICITACOES DE COLETA E CHAT COOPERATIVA x CONDOMINIO
+-- ============================================================================
+
+COMMENT ON COLUMN tb_agendamentos_coletas.solicitado_por_usuario_id IS 'Usuario que abriu a solicitacao (sindico do condominio ou usuario da cooperativa)';
+COMMENT ON COLUMN tb_agendamentos_coletas.origem_solicitacao IS 'CONDOMINIO | COOPERATIVA - lado que abriu a solicitacao';
+COMMENT ON COLUMN tb_agendamentos_coletas.respondido_por_usuario_id IS 'Quem aceitou/recusou. Sempre o lado oposto a origem_solicitacao';
+COMMENT ON COLUMN tb_agendamentos_coletas.respondido_em IS 'Momento do aceite/recusa';
+
+-- Status usados no fluxo de coleta (idempotente). Mesmos nomes do populador:
+--   Agendado = pendente | Confirmado = aceita | Recusado | Realizado | Cancelado
+INSERT INTO tb_lkp_status_agendamentos (nome_status)
+SELECT v.nome
+  FROM (VALUES ('Agendado'), ('Confirmado'), ('Recusado'), ('Realizado'), ('Cancelado')) AS v(nome)
+ WHERE NOT EXISTS (SELECT 1 FROM tb_lkp_status_agendamentos s WHERE s.nome_status = v.nome);
+
+-- ----------------------------------------------------------------------------
+-- FUNCTION 3: fn_usuario_representa_lado
+-- TRUE se o usuario fala em nome do lado informado:
+--   CONDOMINIO  -> e o sindico atual do condominio
+--   COOPERATIVA -> e o usuario vinculado a cooperativa
+-- Reutilizada pelo agendamento e pelo chat.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_usuario_representa_lado(
+    p_usuario_id     INTEGER,
+    p_lado           VARCHAR,
+    p_condominio_id  INTEGER,
+    p_cooperativa_id INTEGER
+)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT CASE p_lado
+        WHEN 'CONDOMINIO' THEN EXISTS (
+            SELECT 1
+              FROM tb_condominios c
+              JOIN tb_sindicos s ON s.id_sindico = c.sindico_id
+             WHERE c.id_condominio = p_condominio_id
+               AND s.usuario_id    = p_usuario_id)
+        WHEN 'COOPERATIVA' THEN EXISTS (
+            SELECT 1
+              FROM tb_cooperativas coop
+             WHERE coop.id_cooperativa = p_cooperativa_id
+               AND coop.usuario_id     = p_usuario_id)
+        ELSE FALSE
+    END;
+$$;
+COMMENT ON FUNCTION fn_usuario_representa_lado IS
+    'Indica se o usuario representa o lado CONDOMINIO (sindico) ou COOPERATIVA de um par condominio/cooperativa.';
+
+-- ----------------------------------------------------------------------------
+-- TRIGGER: trg_validar_partes_agendamento
+-- Garante no banco que:
+--   1) o solicitante pertence ao lado de origem_solicitacao;
+--   2) quem aceita/recusa e o lado OPOSTO (condominio nao aprova a propria
+--      solicitacao e vice-versa).
+-- Transicoes de status (quem marca realizada/cancelada) ficam na API.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_trg_validar_partes_agendamento()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_lado_resposta VARCHAR(20);
+BEGIN
+    -- NULL so existe em linhas legadas nao migradas
+    IF NEW.solicitado_por_usuario_id IS NOT NULL
+       AND NOT fn_usuario_representa_lado(NEW.solicitado_por_usuario_id, NEW.origem_solicitacao,
+                                          NEW.condominio_id, NEW.cooperativa_id) THEN
+        RAISE EXCEPTION 'Usuario % nao representa o lado % deste agendamento',
+            NEW.solicitado_por_usuario_id, NEW.origem_solicitacao;
+    END IF;
+
+    IF NEW.respondido_por_usuario_id IS NOT NULL THEN
+        v_lado_resposta := CASE NEW.origem_solicitacao
+                               WHEN 'CONDOMINIO' THEN 'COOPERATIVA'
+                               ELSE 'CONDOMINIO'
+                           END;
+
+        IF NOT fn_usuario_representa_lado(NEW.respondido_por_usuario_id, v_lado_resposta,
+                                          NEW.condominio_id, NEW.cooperativa_id) THEN
+            RAISE EXCEPTION 'Somente o lado % pode aceitar/recusar esta solicitacao', v_lado_resposta;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER trg_validar_partes_agendamento
+    BEFORE INSERT OR UPDATE OF solicitado_por_usuario_id, origem_solicitacao,
+                               respondido_por_usuario_id, condominio_id, cooperativa_id
+    ON tb_agendamentos_coletas
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_trg_validar_partes_agendamento();
+
+-- ----------------------------------------------------------------------------
+-- CHAT: uma conversa por par condominio x cooperativa.
+-- A cooperativa sempre inicia; depois o sindico pode responder.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS tb_conversas (
+    id_conversa         INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    condominio_id       INTEGER      NOT NULL,
+    cooperativa_id      INTEGER      NOT NULL,
+    criada_em           TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    ultima_mensagem_em  TIMESTAMPTZ,
+    ativa               BOOLEAN      NOT NULL DEFAULT TRUE,
+    CONSTRAINT fk_conversas_condominio_id FOREIGN KEY (condominio_id) REFERENCES tb_condominios (id_condominio),
+    CONSTRAINT fk_conversas_cooperativa_id FOREIGN KEY (cooperativa_id) REFERENCES tb_cooperativas (id_cooperativa),
+    CONSTRAINT uq_conversas_condominio_cooperativa UNIQUE (condominio_id, cooperativa_id)
+);
+COMMENT ON TABLE tb_conversas IS 'Canal de chat entre uma cooperativa e um condominio (sindico). Uma conversa por par.';
+COMMENT ON COLUMN tb_conversas.ultima_mensagem_em IS 'Atualizado por trigger a cada mensagem; ordena a caixa de entrada';
+COMMENT ON COLUMN tb_conversas.ativa IS 'FALSE bloqueia novas mensagens (ex.: parceria encerrada)';
+
+CREATE TABLE IF NOT EXISTS tb_mensagens_conversas (
+    id_mensagem           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    conversa_id           INTEGER      NOT NULL,
+    remetente_usuario_id  INTEGER      NOT NULL,
+    remetente_tipo        VARCHAR(20)  NOT NULL,
+    conteudo              TEXT         NOT NULL,
+    enviada_em            TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    lida_em               TIMESTAMPTZ,
+    CONSTRAINT fk_mensagens_conversas_conversa_id FOREIGN KEY (conversa_id) REFERENCES tb_conversas (id_conversa),
+    CONSTRAINT fk_mensagens_conversas_remetente_usuario_id FOREIGN KEY (remetente_usuario_id) REFERENCES tb_usuarios (id_usuario),
+    CONSTRAINT ck_mensagens_conversas_remetente_tipo CHECK (remetente_tipo IN ('COOPERATIVA', 'CONDOMINIO')),
+    CONSTRAINT ck_mensagens_conversas_conteudo CHECK (length(btrim(conteudo)) BETWEEN 1 AND 2000),
+    CONSTRAINT ck_mensagens_conversas_lida_em CHECK (lida_em IS NULL OR lida_em >= enviada_em)
+);
+COMMENT ON TABLE tb_mensagens_conversas IS 'Mensagens do chat cooperativa x condominio.';
+COMMENT ON COLUMN tb_mensagens_conversas.remetente_tipo IS 'COOPERATIVA | CONDOMINIO - validado contra o usuario por trigger';
+COMMENT ON COLUMN tb_mensagens_conversas.lida_em IS 'Preenchido quando o destinatario abre a conversa. NULL = nao lida';
+
+-- Historico paginado da conversa
+CREATE INDEX IF NOT EXISTS idx_mensagens_conversas_conversa_enviada
+    ON tb_mensagens_conversas (conversa_id, enviada_em DESC);
+-- Contador de nao lidas por conversa/lado
+CREATE INDEX IF NOT EXISTS idx_mensagens_conversas_nao_lidas
+    ON tb_mensagens_conversas (conversa_id, remetente_tipo)
+    WHERE lida_em IS NULL;
+-- Caixa de entrada do sindico e da cooperativa
+CREATE INDEX IF NOT EXISTS idx_conversas_cooperativa_ultima
+    ON tb_conversas (cooperativa_id, ultima_mensagem_em DESC);
+CREATE INDEX IF NOT EXISTS idx_conversas_condominio_ultima
+    ON tb_conversas (condominio_id, ultima_mensagem_em DESC);
+
+-- ----------------------------------------------------------------------------
+-- TRIGGER: trg_validar_mensagem_conversa
+-- Valida remetente x lado, exige que a cooperativa inicie a conversa e
+-- atualiza tb_conversas.ultima_mensagem_em.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_trg_validar_mensagem_conversa()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_condominio_id  INTEGER;
+    v_cooperativa_id INTEGER;
+    v_ativa          BOOLEAN;
+BEGIN
+    -- Trava a conversa para serializar a checagem de "primeira mensagem".
+    SELECT condominio_id, cooperativa_id, ativa
+      INTO v_condominio_id, v_cooperativa_id, v_ativa
+      FROM tb_conversas
+     WHERE id_conversa = NEW.conversa_id
+     FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Conversa % nao encontrada', NEW.conversa_id;
+    END IF;
+
+    IF NOT v_ativa THEN
+        RAISE EXCEPTION 'Conversa % esta inativa e nao aceita novas mensagens', NEW.conversa_id;
+    END IF;
+
+    IF NOT fn_usuario_representa_lado(NEW.remetente_usuario_id, NEW.remetente_tipo,
+                                      v_condominio_id, v_cooperativa_id) THEN
+        RAISE EXCEPTION 'Usuario % nao pode enviar mensagem como % nesta conversa',
+            NEW.remetente_usuario_id, NEW.remetente_tipo;
+    END IF;
+
+    IF NEW.remetente_tipo = 'CONDOMINIO'
+       AND NOT EXISTS (SELECT 1 FROM tb_mensagens_conversas WHERE conversa_id = NEW.conversa_id) THEN
+        RAISE EXCEPTION 'A conversa % deve ser iniciada pela cooperativa', NEW.conversa_id;
+    END IF;
+
+    UPDATE tb_conversas
+       -- GREATEST: mensagem com data antiga (carga historica) nao volta o relogio
+       SET ultima_mensagem_em = GREATEST(ultima_mensagem_em, NEW.enviada_em)
+     WHERE id_conversa = NEW.conversa_id;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER trg_validar_mensagem_conversa
+    BEFORE INSERT ON tb_mensagens_conversas
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_trg_validar_mensagem_conversa();
+
+
+-- ============================================================================
+-- SECAO 18 - DASHBOARD DO SINDICO
+-- 1 linha por condominio. A API filtra por sindico_usuario_id (usuario logado).
+--   Materiais reciclados = postagens APROVADAS de forma definitiva
+--                          (resolvido_em preenchido), por categoria em JSON.
+--   Pontos               = saldo liquido do ledger (CREDITO + RESTAURACAO - ESTORNO).
+--   Quizzes              = tentativas concluidas no condominio (snapshot da
+--                          tentativa), com nota media geral e por quiz em JSON.
+-- ============================================================================
+
+-- tb_tentativas_quiz nao tinha indice por condominio
+CREATE INDEX IF NOT EXISTS idx_tentativas_quiz_condominio_id
+    ON tb_tentativas_quiz (condominio_id);
+
+CREATE OR REPLACE VIEW vw_dashboard_sindico AS
+WITH moradores AS (
+    SELECT m.condominio_id,
+           COUNT(*)::BIGINT AS total_moradores
+      FROM tb_moradores m
+     GROUP BY m.condominio_id
+),
+postagens AS (
+    SELECT p.condominio_id,
+           COUNT(*) FILTER (WHERE sv.nome_status = 'aprovada'   AND p.resolvido_em IS NOT NULL)::BIGINT AS materiais_reciclados,
+           COUNT(*) FILTER (WHERE p.resolvido_em IS NULL)::BIGINT                                        AS postagens_em_validacao,
+           COUNT(*) FILTER (WHERE sv.nome_status = 'em_analise' AND p.resolvido_em IS NOT NULL)::BIGINT AS postagens_aguardando_sindico,
+           COUNT(*) FILTER (WHERE sv.nome_status = 'reprovada'  AND p.resolvido_em IS NOT NULL)::BIGINT AS postagens_reprovadas
+      FROM tb_postagens p
+      JOIN tb_lkp_status_validacoes_postagens sv ON sv.id_status_validacao = p.status_validacao_id
+     GROUP BY p.condominio_id
+),
+materiais_categoria AS (
+    SELECT p.condominio_id,
+           cr.id_categoria,
+           cr.nome_categoria,
+           cr.cor_identificacao,
+           COUNT(*)::BIGINT AS quantidade
+      FROM tb_postagens p
+      JOIN tb_lkp_status_validacoes_postagens sv ON sv.id_status_validacao = p.status_validacao_id
+      JOIN tb_lkp_categorias_residuos cr         ON cr.id_categoria = p.categoria_id
+     WHERE sv.nome_status = 'aprovada'
+       AND p.resolvido_em IS NOT NULL
+     GROUP BY p.condominio_id, cr.id_categoria, cr.nome_categoria, cr.cor_identificacao
+),
+materiais_json AS (
+    SELECT condominio_id,
+           jsonb_agg(
+               jsonb_build_object(
+                   'id_categoria', id_categoria,
+                   'categoria',    nome_categoria,
+                   'cor',          cor_identificacao,
+                   'quantidade',   quantidade
+               ) ORDER BY quantidade DESC, nome_categoria
+           ) AS materiais_por_categoria
+      FROM materiais_categoria
+     GROUP BY condominio_id
+),
+pontos AS (
+    SELECT mp.condominio_id,
+           SUM(CASE WHEN mp.tipo_movimentacao = 'ESTORNO' THEN -mp.pontos ELSE mp.pontos END)::BIGINT AS pontos_total,
+           SUM(CASE WHEN mp.tipo_movimentacao = 'ESTORNO' THEN -mp.pontos ELSE mp.pontos END)
+               FILTER (WHERE mp.origem_tipo = 'POSTAGEM')::BIGINT AS pontos_postagens,
+           SUM(CASE WHEN mp.tipo_movimentacao = 'ESTORNO' THEN -mp.pontos ELSE mp.pontos END)
+               FILTER (WHERE mp.origem_tipo = 'QUIZ')::BIGINT     AS pontos_quizzes,
+           SUM(CASE WHEN mp.tipo_movimentacao = 'ESTORNO' THEN -mp.pontos ELSE mp.pontos END)
+               FILTER (WHERE mp.ocorrido_em >= (date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo')
+                                                AT TIME ZONE 'America/Sao_Paulo'))::BIGINT AS pontos_mes_atual
+      FROM tb_movimentacoes_pontos mp
+     WHERE mp.condominio_id IS NOT NULL
+     GROUP BY mp.condominio_id
+),
+quizzes AS (
+    SELECT tq.condominio_id,
+           COUNT(*) FILTER (WHERE tq.concluido_em IS NOT NULL)::BIGINT                   AS tentativas_concluidas,
+           COUNT(*) FILTER (WHERE tq.aprovado = TRUE)::BIGINT                            AS tentativas_aprovadas,
+           COUNT(DISTINCT tq.usuario_id) FILTER (WHERE tq.concluido_em IS NOT NULL)::BIGINT AS moradores_com_quiz,
+           ROUND(AVG(tq.nota) FILTER (WHERE tq.concluido_em IS NOT NULL), 2)             AS nota_media_quizzes,
+           ROUND(100.0 * COUNT(*) FILTER (WHERE tq.aprovado = TRUE)
+                 / NULLIF(COUNT(*) FILTER (WHERE tq.concluido_em IS NOT NULL), 0), 2)    AS taxa_aprovacao_quizzes
+      FROM tb_tentativas_quiz tq
+     WHERE tq.condominio_id IS NOT NULL
+     GROUP BY tq.condominio_id
+),
+quizzes_detalhe AS (
+    SELECT tq.condominio_id,
+           q.id_quiz,
+           q.titulo_quiz,
+           COUNT(*)::BIGINT                               AS tentativas,
+           COUNT(*) FILTER (WHERE tq.aprovado = TRUE)::BIGINT AS aprovadas,
+           ROUND(AVG(tq.nota), 2)                         AS nota_media
+      FROM tb_tentativas_quiz tq
+      JOIN tb_quizzes q ON q.id_quiz = tq.quiz_id
+     WHERE tq.condominio_id IS NOT NULL
+       AND tq.concluido_em IS NOT NULL
+     GROUP BY tq.condominio_id, q.id_quiz, q.titulo_quiz
+),
+quizzes_json AS (
+    SELECT condominio_id,
+           jsonb_agg(
+               jsonb_build_object(
+                   'id_quiz',    id_quiz,
+                   'quiz',       titulo_quiz,
+                   'tentativas', tentativas,
+                   'aprovadas',  aprovadas,
+                   'nota_media', nota_media
+               ) ORDER BY titulo_quiz
+           ) AS notas_por_quiz
+      FROM quizzes_detalhe
+     GROUP BY condominio_id
+)
+SELECT
+    c.id_condominio,
+    c.nome_condominio,
+    s.usuario_id                                    AS sindico_usuario_id,
+    us.nome_usuario                                 AS nome_sindico,
+    COALESCE(mo.total_moradores, 0)                 AS total_moradores,
+    -- materiais reciclados
+    COALESCE(po.materiais_reciclados, 0)            AS materiais_reciclados,
+    COALESCE(po.postagens_em_validacao, 0)          AS postagens_em_validacao,
+    COALESCE(po.postagens_aguardando_sindico, 0)    AS postagens_aguardando_sindico,
+    COALESCE(po.postagens_reprovadas, 0)            AS postagens_reprovadas,
+    COALESCE(mj.materiais_por_categoria, '[]'::jsonb) AS materiais_por_categoria,
+    -- pontos
+    COALESCE(pt.pontos_total, 0)                    AS pontos_total,
+    COALESCE(pt.pontos_postagens, 0)                AS pontos_postagens,
+    COALESCE(pt.pontos_quizzes, 0)                  AS pontos_quizzes,
+    COALESCE(pt.pontos_mes_atual, 0)                AS pontos_mes_atual,
+    -- quizzes
+    COALESCE(qz.tentativas_concluidas, 0)           AS tentativas_quiz_concluidas,
+    COALESCE(qz.tentativas_aprovadas, 0)            AS tentativas_quiz_aprovadas,
+    COALESCE(qz.moradores_com_quiz, 0)              AS moradores_com_quiz,
+    qz.nota_media_quizzes,
+    qz.taxa_aprovacao_quizzes,
+    COALESCE(qj.notas_por_quiz, '[]'::jsonb)        AS notas_por_quiz
+FROM tb_condominios c
+LEFT JOIN tb_sindicos s      ON s.id_sindico   = c.sindico_id
+LEFT JOIN tb_usuarios us     ON us.id_usuario  = s.usuario_id
+LEFT JOIN moradores mo       ON mo.condominio_id = c.id_condominio
+LEFT JOIN postagens po       ON po.condominio_id = c.id_condominio
+LEFT JOIN materiais_json mj  ON mj.condominio_id = c.id_condominio
+LEFT JOIN pontos pt          ON pt.condominio_id = c.id_condominio
+LEFT JOIN quizzes qz         ON qz.condominio_id = c.id_condominio
+LEFT JOIN quizzes_json qj    ON qj.condominio_id = c.id_condominio;
+
+COMMENT ON VIEW vw_dashboard_sindico IS
+    'Dashboard do sindico: materiais reciclados (por categoria), pontos do ledger e notas dos quizzes por condominio. Filtrar por sindico_usuario_id ou id_condominio.';
+
 COMMIT;
 
 -- ============================================================================
 -- FIM DAS VIEWS ANALÍTICAS
 --
 -- ============================================================================
--- FIM DO SCRIPT (46 tabelas)
+-- FIM DO SCRIPT (49 tabelas)
 -- ============================================================================

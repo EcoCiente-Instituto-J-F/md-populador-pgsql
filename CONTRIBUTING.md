@@ -29,6 +29,7 @@ O repositório ainda não tem um workflow de CI que rode os testes. Rode os self
 cd src
 python -m tests.test_dau
 python -m tests.test_schema
+python -m tests.test_curriculo
 python -m tests.test_ui
 ```
 

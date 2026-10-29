@@ -80,6 +80,7 @@ from utils.database import (
     criar_recorrencia,
     criar_visita,
     criar_avaliacao_visita,
+    popular_chat_cooperativas,
     simular_trilhas,
     popular_notificacoes,
     popular_autenticacoes_api,
@@ -109,6 +110,7 @@ TABELAS_RESUMO = [
     "tb_lkp_tipos_eventos_auditados", "tb_lkp_tipos_operacoes_auditoria", "tb_log_auditoria",
     "tb_log_auditoria_postagens", "tb_log_auditoria_agendamentos_coletas",
     "tb_log_auditoria_usuarios_condominios",
+    "tb_conversas", "tb_mensagens_conversas",
     "tb_atividades_diarias_usuarios", "tb_metricas_dau",
 ]
 
@@ -232,7 +234,7 @@ def main():
         def novo_ocupante(tipo_usuario, condominio_id, sindico_uid, torre_id, comercial):
             desde = USUARIOS[sindico_uid]["inicio"]
             uid, _ = criar_usuario(cur, tipos_usuario[tipo_usuario], desde=desde, comercial=comercial)
-            criar_morador(cur, uid, condominio_id)
+            criar_morador(cur, uid, condominio_id, torre_id)
             _, pode_votar = criar_vinculo_condominio(cur, uid, condominio_id,
                                                      aprovado_por_usuario_id=sindico_uid)
             if pode_votar:
@@ -266,12 +268,13 @@ def main():
         recalcular_trust_scores(cur)
         print(f"      -> {qtd_postagens} postagens, {qtd_votos} votos; trust_score recalculado.")
 
-        print("[8/10] Agendamentos, recorrências, visitas e avaliações...")
+        print("[8/10] Agendamentos, recorrências, visitas, avaliações e chat...")
         qtd_visitas = 0
+        parcerias = {}  # (condominio_id, cooperativa_id) -> datas e usuários do par, para o chat
         for condominio_id, sindico_uid in sindico_por_condominio.items():
             parceiras = rng.sample(cooperativas, min(2, len(cooperativas)))
             for _ in range(rng.randint(*AGENDAMENTOS_POR_CONDOMINIO)):
-                coop_id, _, _, qualidade = rng.choice(parceiras)
+                coop_id, _, coop_uid, qualidade = rng.choice(parceiras)
                 data_inicio = AGORA + timedelta(days=rng.uniform(-DIAS_HISTORICO, 45))
                 futuro = data_inicio > AGORA
                 if futuro:
@@ -280,8 +283,18 @@ def main():
                     status = rng.choices(["Realizado", "Cancelado", "Recusado"],
                                          weights=[qualidade * 100, 12, (1 - qualidade) * 40])[0]
                 recorrente = fk.boolean(65)
+                # ~30% das solicitações partem da cooperativa; a resposta
+                # cabe sempre ao lado oposto (regra da trigger de agendamento).
+                if fk.boolean(30):
+                    origem, solicitante, responsavel = "COOPERATIVA", coop_uid, sindico_uid
+                else:
+                    origem, solicitante, responsavel = "CONDOMINIO", sindico_uid, coop_uid
                 agendamento_id = criar_agendamento(cur, condominio_id, coop_id, status_agendamento,
-                                                   data_inicio, status, recorrente)
+                                                   data_inicio, status, recorrente,
+                                                   solicitante, origem, responsavel)
+                par = parcerias.setdefault((condominio_id, coop_id), {
+                    "sindico": sindico_uid, "cooperativa": coop_uid, "inicio": data_inicio})
+                par["inicio"] = min(par["inicio"], data_inicio)
                 if recorrente:
                     for dia_id in rng.sample(list(dias_semana.values()), rng.randint(1, 2)):
                         criar_recorrencia(cur, agendamento_id, dia_id)
@@ -307,6 +320,9 @@ def main():
                         criar_avaliacao_visita(cur, visita_id, sindico_uid, qualidade,
                                                realizada, data_visita)
         print(f"      -> {qtd_visitas} visitas.")
+
+        qtd_conversas, qtd_mensagens = popular_chat_cooperativas(cur, parcerias)
+        print(f"      -> {qtd_conversas} conversas, {qtd_mensagens} mensagens no chat.")
 
         print("[9/10] Trilhas de ensino, quizzes, ledger de pontos, notificações e tokens...")
         usuarios_ensino = usuarios_comuns + [o["usuario_id"] for o in ocupantes]

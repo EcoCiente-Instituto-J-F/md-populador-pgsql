@@ -1466,7 +1466,8 @@
               "texto": "Substituir exclusivamente produtos industrializados por produtos artesanais",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Sustentabilidade é atender às necessidades de hoje sem comprometer as das próximas gerações. As outras opções proíbem qualquer uso de recursos, reduzem tudo à reciclagem ou a um tipo de produto."
         },
         {
           "tipo": "Múltipla escolha",
@@ -1492,7 +1493,8 @@
               "texto": "Individual, empresarial e governamental",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Os três pilares usuais são o ambiental, o social e o econômico: só há sustentabilidade quando os três são considerados juntos."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -1508,7 +1510,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Renovável quer dizer que o recurso se regenera, mas num ritmo próprio; se for explorado mais rápido do que se recompõe, ele se esgota."
         },
         {
           "tipo": "Múltipla escolha",
@@ -1534,7 +1537,8 @@
               "texto": "Separar resíduos recicláveis por material",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Repensar é parar antes da compra e avaliar se ela é mesmo necessária. As outras opções tratam de descarte, reaproveitamento e separação, que vêm depois."
         },
         {
           "tipo": "Múltipla escolha",
@@ -1560,7 +1564,8 @@
               "texto": "Comprar duas unidades para evitar voltar à loja",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Recusar é dizer não ao que não é necessário, como o canudo descartável, antes que ele vire resíduo. Aceitar brindes ou comprar em excesso vai no sentido oposto."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -1576,7 +1581,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Reduzir e reutilizar atuam antes de o resíduo existir; reciclar só processa o que já foi gerado e ainda gasta energia, por isso vem por último."
         },
         {
           "tipo": "Múltipla escolha",
@@ -1602,7 +1608,8 @@
               "texto": "Escolher produtos apenas pela cor verde da embalagem",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Produtos duráveis e a compra só do necessário diminuem consumo e resíduo. Promoções, trocas anuais e \"embalagem verde\" estimulam consumo ou apenas parecem sustentáveis."
         },
         {
           "tipo": "Múltipla escolha",
@@ -1628,7 +1635,8 @@
               "texto": "Não existe diferença prática entre os dois conceitos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Reutilizar prolonga o uso do mesmo objeto; reciclar transforma o material em matéria-prima para um novo ciclo produtivo. São etapas diferentes."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -1644,7 +1652,8 @@
               "texto": "Falso",
               "correta": true
             }
-          ]
+          ],
+          "explicacao": "Falso. A sustentabilidade tem dimensão ambiental, social e econômica; ignorar as duas últimas deixa de fora parte do conceito."
         },
         {
           "tipo": "Múltipla escolha",
@@ -1670,7 +1679,8 @@
               "texto": "Porque produtos duráveis nunca precisam de manutenção",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Quanto mais um produto dura, menos precisa ser substituído, o que reduz compras, extração de recursos e resíduos. Durabilidade não significa material reciclado nem ausência de manutenção."
         },
         {
           "tipo": "Múltipla escolha",
@@ -1696,7 +1706,8 @@
               "texto": "Trocar equipamentos sempre que surgir um novo modelo",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Consumo consciente é analisar necessidade, durabilidade, origem e possibilidade de reparo antes de comprar. Comprar por impulso e doar depois, ou trocar a cada modelo novo, mantém o excesso."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -1712,7 +1723,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Hábitos repetidos por muitas pessoas somam efeito coletivo, e a demanda dos consumidores também pressiona empresas e políticas públicas."
         }
       ]
     },
@@ -1750,7 +1762,8 @@
               "texto": "Eliminar a necessidade de cooperativas e centrais de triagem",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A coleta seletiva separa os materiais já na origem, o que facilita a triagem e o aproveitamento. Misturar tudo ou dispensar cooperativas faria o contrário."
         },
         {
           "tipo": "Múltipla escolha",
@@ -1776,7 +1789,8 @@
               "texto": "Todo lixo recebido é enterrado sem separação",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Na central de triagem os recicláveis são separados, classificados e preparados (prensados, enfardados) para comercialização; não são queimados nem enterrados."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -1792,7 +1806,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Ser reciclável é uma característica técnica do material, mas reciclar de fato depende de estrutura, mercado e viabilidade local."
         },
         {
           "tipo": "Múltipla escolha",
@@ -1818,7 +1833,8 @@
               "texto": "Não há diferença ambiental entre eles",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O aterro sanitário tem impermeabilização, drenagem e controle de gases e chorume; o lixão é uma disposição inadequada a céu aberto, sem esses controles."
         },
         {
           "tipo": "Múltipla escolha",
@@ -1844,7 +1860,8 @@
               "texto": "Uma substância usada para lavar recicláveis",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Chorume é o líquido que resulta da decomposição dos resíduos e da água que passa por eles. Pode contaminar solo e águas."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -1860,7 +1877,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Lixo jogado na rua entope bueiros e a chuva o carrega para córregos e rios."
         },
         {
           "tipo": "Múltipla escolha",
@@ -1886,7 +1904,8 @@
               "texto": "Porque transforma papel e metal em resíduos orgânicos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Restos de comida e líquidos sujam papel, papelão e outros materiais e podem inviabilizar seu aproveitamento. Contaminar nunca valoriza o material."
         },
         {
           "tipo": "Múltipla escolha",
@@ -1912,7 +1931,8 @@
               "texto": "Fiscalizar o consumo de água das residências",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "As cooperativas fazem a triagem, a classificação e a venda dos recicláveis, além de gerar trabalho e renda; não se limitam a transportar lixo comum."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -1928,7 +1948,8 @@
               "texto": "Falso",
               "correta": true
             }
-          ]
+          ],
+          "explicacao": "Falso. Colocar itens \"por garantia\" contamina o lote e aumenta o rejeito. O certo é conferir o que a coleta local aceita."
         },
         {
           "tipo": "Múltipla escolha",
@@ -1954,7 +1975,8 @@
               "texto": "Eles são dissolvidos em água e enviados à rede de esgoto",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Depois da triagem, o material aproveitável é prensado, comercializado e enviado a recicladores e indústrias. Não volta a quem descartou nem vira adubo."
         },
         {
           "tipo": "Múltipla escolha",
@@ -1980,7 +2002,8 @@
               "texto": "Um ponto de venda de produtos reciclados",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A estação de transbordo é um ponto de transferência dos resíduos de um veículo para outro maior, o que otimiza o transporte até o destino final."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -1996,7 +2019,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. A coleta seletiva ajuda, mas reduzir e reutilizar evitam a geração do resíduo e continuam sendo prioridade."
         }
       ]
     },
@@ -2035,7 +2059,8 @@
               "texto": "Caros, baratos, novos e antigos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Recicláveis secos, orgânicos, rejeitos e resíduos especiais são grupos com destinos diferentes. Tamanho, cor ou preço não dizem para onde o resíduo deve ir."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -2051,7 +2076,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Comida dentro da embalagem suja o material reciclável e pode inviabilizar seu aproveitamento; por isso as embalagens devem estar vazias e limpas."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2077,7 +2103,8 @@
               "texto": "Colocar a caixa junto com pilhas e baterias",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A parte do papelão limpa pode ir para a reciclagem e a muito engordurada não, conforme a regra local. Encharcar a caixa ou misturá-la a pilhas piora o problema."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2103,7 +2130,8 @@
               "texto": "Quebrá-lo em pedaços menores com as mãos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Acondicionar o vidro quebrado de forma segura e seguir a orientação local protege quem coleta e tria. Solto, quebrado em pedaços menores ou misturado a outros resíduos, causa cortes."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -2119,7 +2147,8 @@
               "texto": "Falso",
               "correta": true
             }
-          ]
+          ],
+          "explicacao": "Falso. Os plásticos têm composições diferentes (PET, PEAD, PP etc.) e, por isso, valores e possibilidades de reciclagem diferentes."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2145,7 +2174,8 @@
               "texto": "Comprar produtos feitos de material reciclado",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Wishcycling é colocar um item na reciclagem só porque se deseja que ele seja reciclável, sem saber se é aceito. Isso contamina o material e atrapalha a triagem."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2171,7 +2201,8 @@
               "texto": "Todo objeto que tenha símbolo de reciclagem",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Rejeito é o resíduo que, nas condições disponíveis, não tem alternativa viável de reaproveitamento ou reciclagem. Nem todo orgânico nem todo objeto com símbolo é rejeito."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -2187,7 +2218,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. O líquido restante escorre e suja os outros materiais guardados no mesmo recipiente."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2213,7 +2245,8 @@
               "texto": "Porque se transformam naturalmente em composto orgânico",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Embalagens multimateriais combinam camadas (papel, plástico, alumínio) que exigem processos de separação diferentes, o que dificulta a reciclagem."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2239,7 +2272,8 @@
               "texto": "Colocar pilhas dentro de garrafas PET",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Esvaziar, reduzir o volume quando for seguro e manter tudo organizado facilita o armazenamento e evita contaminação."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -2255,7 +2289,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Os símbolos ajudam a identificar o material, mas quem define o que é aceito é a coleta local."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2281,7 +2316,8 @@
               "texto": "Esponja de cozinha contaminada",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A lata de alumínio tem uma cadeia de reciclagem consolidada e alto valor de reaproveitamento. Guardanapo sujo, papel higiênico usado e esponja contaminada não são recicláveis."
         }
       ]
     },
@@ -2319,7 +2355,8 @@
               "texto": "Porque podem ser reciclados junto com papel",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Medicamento vencido no vaso ou na pia pode contaminar a água e precisa de destinação específica, em ponto de coleta apropriado."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2345,7 +2382,8 @@
               "texto": "Ele se transforma automaticamente em água",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Óleo de cozinha na pia gruda na tubulação, causa entupimentos e polui a água. Ele não melhora o esgoto nem \"vira água\"."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -2361,7 +2399,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Algumas lâmpadas têm componentes que exigem coleta e logística reversa próprias."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2387,7 +2426,8 @@
               "texto": "Uma técnica de compostagem de resíduos eletrônicos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Logística reversa é o sistema que devolve certos produtos e resíduos à cadeia adequada de coleta e destinação."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2413,7 +2453,8 @@
               "texto": "Porque devem ser misturadas aos resíduos orgânicos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Pilhas e baterias podem conter substâncias e componentes de risco, principalmente se forem danificadas ou destinadas de forma errada."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -2429,7 +2470,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Eletrônicos têm materiais valiosos (como metais) e também substâncias que exigem tratamento adequado."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2455,7 +2497,8 @@
               "texto": "Deixá-lo na rua para alguém recolher",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Se o notebook ainda funciona, vale considerar reparo, reuso, venda ou doação antes do descarte, o que prolonga sua vida útil e evita lixo eletrônico."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2481,7 +2524,8 @@
               "texto": "Abrir a bateria com ferramentas domésticas",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O celular guarda dados pessoais, então é preciso protegê-los ou apagá-los e remover acessos antes de entregar o aparelho."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -2497,7 +2541,8 @@
               "texto": "Falso",
               "correta": true
             }
-          ]
+          ],
+          "explicacao": "Falso. Tintas, solventes e químicos domésticos são perigosos e não seguem a coleta seletiva comum; precisam de ponto de recebimento específico."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2523,7 +2568,8 @@
               "texto": "Queimar o produto para reduzir o volume",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Na logística reversa, o consumidor faz sua parte entregando o resíduo no canal de recebimento apropriado."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2549,7 +2595,8 @@
               "texto": "Expostas ao sol para descarregar mais rápido",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Armazenar as pilhas protegidas e secas, evitando danos e contato inadequado entre terminais, reduz o risco de vazamento e curto-circuito."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -2565,7 +2612,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Pneus descartados de forma irregular acumulam água parada (foco de mosquitos) e causam problemas ambientais e urbanos."
         }
       ]
     },
@@ -2603,7 +2651,8 @@
               "texto": "Lata de alumínio",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Casca de fruta é resíduo orgânico e se decompõe na composteira. Pilhas, vidro e latas não."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2629,7 +2678,8 @@
               "texto": "Produzir eletricidade diretamente a partir do vidro",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Os microrganismos decompõem a matéria orgânica; sem eles não há compostagem."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -2645,7 +2695,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. A composteira funciona bem quando há equilíbrio entre umidade, oxigênio e diferentes tipos de material."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2671,7 +2722,8 @@
               "texto": "Pedras e areia seca",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Os materiais \"verdes\" são úmidos e ricos em nitrogênio, como muitos restos vegetais frescos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2697,7 +2749,8 @@
               "texto": "Substituir o recipiente da composteira",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Folhas secas e papelão sem plástico fornecem carbono e absorvem o excesso de umidade, equilibrando o processo."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -2713,7 +2766,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Cheiro forte costuma indicar excesso de umidade ou pouco ar, e se corrige com material seco e aeração."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2739,7 +2793,8 @@
               "texto": "Elimina a necessidade de oxigênio",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Cobrir os restos com material seco equilibra a umidade, reduz o cheiro e evita expor a comida a moscas."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2765,7 +2820,8 @@
               "texto": "Eliminar a necessidade de matéria orgânica",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "As minhocas participam da decomposição e da transformação da matéria orgânica em composto."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2791,7 +2847,8 @@
               "texto": "Adicionar pilhas trituradas",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Com a composteira encharcada, o certo é adicionar material seco e melhorar a aeração. Mais água ou fechar o ar só agrava."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -2807,7 +2864,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. O composto maduro é mais homogêneo, tem cheiro de terra e já não se reconhecem os resíduos originais."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2833,7 +2891,8 @@
               "texto": "Um ambiente totalmente fechado e sem circulação de ar",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O local deve ter ventilação, proteção contra condições extremas e facilidade de manutenção para o processo ficar estável."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2859,7 +2918,8 @@
               "texto": "Transforma todo tipo de lixo em fertilizante",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A compostagem reduz a quantidade de orgânicos enviada à coleta comum e gera composto útil. Ela não elimina a separação de recicláveis nem transforma todo lixo em fertilizante."
         }
       ]
     },
@@ -2897,7 +2957,8 @@
               "texto": "Porque alimentos descartados sempre podem ser recuperados",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Produzir alimento usa água, energia, solo, trabalho e transporte; jogar comida fora desperdiça tudo isso junto."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -2913,7 +2974,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. A lista de compras ajuda a comprar só o que falta e evita itens repetidos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2939,7 +3001,8 @@
               "texto": "Garantir que nenhum alimento precise ser armazenado",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Planejar as refeições faz a compra bater com o consumo real. Comprar o maior pacote ou ignorar o que já existe gera sobra."
         },
         {
           "tipo": "Múltipla escolha",
@@ -2965,7 +3028,8 @@
               "texto": "Descartar todos imediatamente",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Deixar os alimentos mais próximos do vencimento à vista e usá-los primeiro evita que estraguem."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -2981,7 +3045,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Congelar alimentos ou porções, quando adequado e seguro, prolonga a vida do alimento e reduz desperdício."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3007,7 +3072,8 @@
               "texto": "Usar apenas produtos embalados",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Aproveitamento integral é usar, com segurança, partes comestíveis que costumam ser descartadas (cascas, talos, folhas). Não é comer qualquer parte sem avaliar."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3033,7 +3099,8 @@
               "texto": "Recusar",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Reduzir é o R ligado a diminuir o que se compra e consome, evitando compra excessiva."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -3049,7 +3116,8 @@
               "texto": "Falso",
               "correta": true
             }
-          ]
+          ],
+          "explicacao": "Falso. Promoção que leva a comprar mais do que se consegue consumir só aumenta o desperdício."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3075,7 +3143,8 @@
               "texto": "Parar de armazenar alimentos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Reduzir as porções e acompanhar as sobras ajusta o preparo ao consumo real. Comprar mais ingredientes não resolve."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3101,7 +3170,8 @@
               "texto": "Quantidade de vagas de garagem",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Medir a quantidade ou a massa de comida descartada por período mostra padrões e permite ajustar produção e porções."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -3117,7 +3187,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Evitar desperdício também evita as emissões da produção e do transporte e a decomposição do alimento descartado."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3143,7 +3214,8 @@
               "texto": "Escolher apenas pelo tamanho da embalagem",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Antes de comprar, conferir geladeira, armários e freezer evita itens repetidos e desperdício."
         }
       ]
     },
@@ -3181,7 +3253,8 @@
               "texto": "Oxidação, incineração, polimento e destilação",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O ciclo da água passa por evaporação, condensação, precipitação e infiltração. As outras sequências misturam processos de outros assuntos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3207,7 +3280,8 @@
               "texto": "Uma camada da atmosfera",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Bacia hidrográfica é a área cujas águas escoam para um rio principal e seus afluentes."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -3223,7 +3297,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. A vegetação perto de rios e nascentes segura o solo, reduz a erosão e protege a qualidade da água."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3249,7 +3324,8 @@
               "texto": "Eliminar a necessidade de redes de distribuição",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O tratamento deixa a água dentro do padrão de qualidade exigido para ser distribuída e consumida."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -3265,7 +3341,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Tratar o esgoto protege a saúde pública e reduz a poluição de rios e outros corpos d'água."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3291,7 +3368,8 @@
               "texto": "Água utilizada apenas em piscinas",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Água virtual é a água usada indiretamente na produção de bens e alimentos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3317,7 +3395,8 @@
               "texto": "Abrir simultaneamente todas as torneiras",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Reduzir o tempo com o chuveiro aberto sem necessidade economiza água. Aumentar a vazão ou deixar ligado faz o contrário."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -3333,7 +3412,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Um vazamento pequeno, mas contínuo, soma um volume grande ao longo de dias e meses."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3359,7 +3439,8 @@
               "texto": "Elimina a necessidade de tratamento de água",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Medir o consumo mostra padrões, permite comparar períodos e avaliar se as ações de economia funcionaram."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3385,7 +3466,8 @@
               "texto": "Nunca limpar ambientes domésticos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Fechar a torneira quando a água não está em uso economiza sem prejudicar a higiene."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3411,7 +3493,8 @@
               "texto": "Mantendo a entrada de água aberta quando a máquina está desligada",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Usar a máquina com carga adequada e evitar ciclos desnecessários reduz o consumo de água e de energia."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -3427,7 +3510,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Medição, manutenção preventiva, detecção de vazamentos e comunicação com os moradores reduzem perdas."
         }
       ]
     },
@@ -3466,7 +3550,8 @@
               "texto": "Ele se transforma em água potável",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O resíduo jogado na rua é levado pela chuva para bueiros, córregos e rios e, depois, chega a ambientes costeiros."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3492,7 +3577,8 @@
               "texto": "Somente embarcações de turismo",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Esgoto inadequado, resíduos sólidos, efluentes e escoamento agrícola são fontes reais de poluição hídrica."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3518,7 +3604,8 @@
               "texto": "Pequenas gotas de petróleo sempre visíveis a olho nu",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Microplásticos são partículas muito pequenas de material plástico."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -3534,7 +3621,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Os microplásticos secundários se formam quando objetos plásticos maiores se fragmentam."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3560,7 +3648,8 @@
               "texto": "Filtração natural da água pelo solo",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A lavagem e o desgaste de alguns tecidos sintéticos liberam microfibras plásticas na água."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -3576,7 +3665,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Melhorar o saneamento reduz o esgoto e os resíduos que chegam a rios, praias e oceanos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3602,7 +3692,8 @@
               "texto": "Impede qualquer crescimento de organismos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Excesso de nutrientes pode causar proliferação de algas e desequilíbrio ecológico, reduzindo o oxigênio da água."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3628,7 +3719,8 @@
               "texto": "Não possuem relação com outras espécies marinhas",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Os recifes de coral abrigam grande biodiversidade e, em muitos lugares, protegem a costa."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -3644,7 +3736,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. A água mais quente estressa os corais e pode causar branqueamento."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3670,7 +3763,8 @@
               "texto": "Transformação de água salgada em água doce",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Acidificação é a redução do pH da água causada pela absorção do dióxido de carbono pelo oceano."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3696,7 +3790,8 @@
               "texto": "Queimar todo plástico a céu aberto",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A estratégia que atua mais perto da origem é reduzir o uso desnecessário e melhorar reutilização e gestão de resíduos. Limpar praias só trata a consequência."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -3712,7 +3807,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Rios e sistemas urbanos levam poluentes até o mar, então proteger os oceanos também depende do que se faz em terra."
         }
       ]
     },
@@ -3751,7 +3847,8 @@
               "texto": "Gás natural",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A energia solar é renovável; carvão, petróleo e gás natural são fontes fósseis."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3777,7 +3874,8 @@
               "texto": "A matriz energética considera somente tomadas domésticas",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A matriz energética considera todas as formas de energia usadas; a matriz elétrica foca só nas fontes que geram eletricidade."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -3793,7 +3891,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Fontes renováveis também causam impactos ambientais e sociais, embora emitam menos gases de efeito estufa que certas fontes fósseis."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3819,7 +3918,8 @@
               "texto": "Do movimento das marés dentro das residências",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Na geração fotovoltaica, as células convertem a luz solar em eletricidade."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3845,7 +3945,8 @@
               "texto": "Não podem ser conectadas a redes elétricas",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Solar e eólica dependem de sol e de vento, então a geração varia ao longo do tempo."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -3861,7 +3962,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Sistemas de armazenamento guardam o excedente para usar quando a geração cai, equilibrando oferta e demanda."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3887,7 +3989,8 @@
               "texto": "Produção obrigatória de resíduos radioativos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Grandes projetos hidrelétricos podem alterar ecossistemas e alagar áreas, dependendo do projeto."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3913,7 +4016,8 @@
               "texto": "Aumentar o consumo para reduzir custos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Eficiência energética é obter o mesmo serviço ou resultado usando menos energia."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3939,7 +4043,8 @@
               "texto": "Caderno de papel",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O chuveiro elétrico costuma ser um dos maiores consumidores de uma residência, por isso merece atenção."
         },
         {
           "tipo": "Múltipla escolha",
@@ -3965,7 +4070,8 @@
               "texto": "Uma unidade de velocidade",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O kWh é a unidade de energia consumida que aparece na conta de energia."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -3981,7 +4087,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Aproveitar a luz natural e usar lâmpadas eficientes reduz o consumo de eletricidade."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4007,7 +4114,8 @@
               "texto": "Porque nenhuma mudança afeta consumidores",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A transição energética envolve infraestrutura, investimentos, empregos, acesso, políticas e impactos sociais, não apenas a troca de fontes."
         }
       ]
     },
@@ -4046,7 +4154,8 @@
               "texto": "Não existe diferença",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Tempo descreve condições de curto prazo; clima é o padrão médio observado ao longo de períodos maiores."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4072,7 +4181,8 @@
               "texto": "Produz exclusivamente oxigênio",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O efeito estufa natural retém calor e mantém a Terra numa temperatura compatível com a vida."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -4088,7 +4198,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. As atividades humanas aumentam a concentração de gases como CO₂ e metano e intensificam o efeito estufa."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4114,7 +4225,8 @@
               "texto": "Argônio",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O dióxido de carbono é um importante gás de efeito estufa; hélio, neônio e argônio não são."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -4130,7 +4242,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Um dia frio é tempo, não clima; ele não refuta uma tendência de aquecimento de longo prazo."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4156,7 +4269,8 @@
               "texto": "Uso de bicicleta em deslocamentos curtos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A queima de combustíveis fósseis emite CO₂ e contribui para as mudanças climáticas."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4182,7 +4296,8 @@
               "texto": "Os dois termos significam exatamente a mesma coisa",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Mitigação reduz as causas das mudanças climáticas; adaptação reduz a vulnerabilidade aos impactos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4208,7 +4323,8 @@
               "texto": "Filtrar resíduos sólidos do ar",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A camada de ozônio estratosférico absorve grande parte da radiação ultravioleta prejudicial."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -4224,7 +4340,8 @@
               "texto": "Falso",
               "correta": true
             }
-          ]
+          ],
+          "explicacao": "Falso. São problemas diferentes: o ozônio ligado à radiação UV e o aquecimento ligado aos gases de efeito estufa, embora haja relações entre eles."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4250,7 +4367,8 @@
               "texto": "Serem fertilizantes orgânicos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Os CFCs ficaram conhecidos por contribuir para a destruição do ozônio estratosférico."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4276,7 +4394,8 @@
               "texto": "Ignorando medições instrumentais",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Os cientistas analisam séries de dados, medições e várias evidências ao longo do tempo, não um único dia quente ou opiniões."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -4292,7 +4411,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Emissões e impactos estão distribuídos entre setores, então a ação envolve governos, empresas, comunidades e indivíduos."
         }
       ]
     },
@@ -4331,7 +4451,8 @@
               "texto": "Reciclagem de papel",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Emissões de veículos e de atividades industriais são uma fonte importante de poluição do ar urbano."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4357,7 +4478,8 @@
               "texto": "Uma camada de rocha subterrânea",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Material particulado é o conjunto de partículas muito pequenas suspensas no ar."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -4373,7 +4495,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. O ozônio da estratosfera protege contra a radiação UV; o ozônio perto do solo é poluente."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4399,7 +4522,8 @@
               "texto": "A ocorrência apenas em áreas rurais",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Um evento é \"extremo\" pela intensidade, duração, frequência ou raridade em relação ao contexto local."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4425,7 +4549,8 @@
               "texto": "Aumento garantido das chuvas",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Ondas de calor agravam problemas de saúde e aumentam o estresse térmico."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -4441,7 +4566,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Chuva intensa causa impactos maiores com drenagem inadequada, solo impermeabilizado e ocupação de áreas de risco."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4467,7 +4593,8 @@
               "texto": "Porque a inclinação elimina a ação da gravidade",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Em encostas vulneráveis, relevo, solo, retirada de vegetação e chuvas se combinam e aumentam a instabilidade."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -4483,7 +4610,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. As mudanças climáticas podem alterar a probabilidade ou a intensidade de alguns eventos extremos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4509,7 +4637,8 @@
               "texto": "Eliminar a necessidade de planos de emergência",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O sistema de alerta antecipa informações de risco para apoiar a preparação e a resposta. Ele não impede o evento nem dispensa planos de emergência."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4535,7 +4664,8 @@
               "texto": "Substituindo redes de esgoto",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Áreas verdes ajudam no conforto térmico, na infiltração da água e na redução de ilhas de calor, dependendo do projeto."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -4551,7 +4681,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Idosos, crianças, pessoas com doenças crônicas e populações com menos infraestrutura são mais vulneráveis em alguns eventos extremos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4577,7 +4708,8 @@
               "texto": "Ignorar mapas de risco",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Melhorar a drenagem e criar planos para ondas de calor reduz riscos diante dos impactos, o que é adaptação climática."
         }
       ]
     },
@@ -4615,7 +4747,8 @@
               "texto": "O número de árvores em uma floresta",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A pegada de carbono estima as emissões de gases de efeito estufa associadas a uma atividade, produto, pessoa ou organização."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4641,7 +4774,8 @@
               "texto": "Combustível queimado no próprio fogão",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Emissão indireta é a que ocorre em outro lugar por causa do que se consome, como a eletricidade usada ou a produção de um produto comprado."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4667,7 +4801,8 @@
               "texto": "Apenas a altura da residência",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Transporte, alimentação, energia e consumo são áreas que influenciam a pegada de carbono de uma pessoa."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4693,7 +4828,8 @@
               "texto": "O nível de ruído de uma cidade",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A pegada ecológica representa a demanda humana sobre áreas e recursos biologicamente produtivos."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -4709,7 +4845,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Comparar produtos exige olhar todo o ciclo de vida (matéria-prima, produção, uso, descarte), não só o transporte."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4735,7 +4872,8 @@
               "texto": "Substituir todas as medições por estimativas pessoais",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A prioridade é evitar e reduzir as emissões; a compensação vem depois, para o que não for possível evitar."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -4751,7 +4889,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. No transporte coletivo as emissões se dividem entre muitos passageiros, o que costuma reduzir o valor por pessoa."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4777,7 +4916,8 @@
               "texto": "Porque elimina todos os impactos da produção original",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Prolongar a vida útil adia a necessidade de fabricar e comprar um substituto, evitando novos impactos de produção."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4803,7 +4943,8 @@
               "texto": "Focar apenas em ações simbólicas",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Metas pequenas, mensuráveis e acompanhadas sustentam a mudança de hábito. Mudar tudo de uma vez sem medir costuma não durar."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -4819,7 +4960,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. A pegada individual é útil para refletir, mas grande parte das emissões depende de empresas, governos e sistemas produtivos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4845,7 +4987,8 @@
               "texto": "Número de cadeiras",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O consumo mensal em kWh mostra se a casa economizou energia."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4871,7 +5014,8 @@
               "texto": "Impor ações sem explicar o motivo",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Mostrar soluções práticas, benefícios e resultados, sem culpa, engaja mais do que ridicularizar, ameaçar ou impor."
         }
       ]
     },
@@ -4910,7 +5054,8 @@
               "texto": "Diversidade de clima, moeda e idioma",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A biodiversidade tem três níveis: diversidade genética, de espécies e de ecossistemas."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4936,7 +5081,8 @@
               "texto": "Atividades realizadas apenas por zoológicos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Serviços ecossistêmicos são os benefícios que os ecossistemas dão às sociedades, como água, polinização e regulação do clima."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -4952,7 +5098,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Quando há relações ecológicas, a perda de uma espécie afeta outras que dependem dela."
         },
         {
           "tipo": "Múltipla escolha",
@@ -4978,7 +5125,8 @@
               "texto": "Proteção de nascentes",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A perda e a fragmentação de habitats é uma ameaça importante. As outras opções são medidas de proteção."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -4994,7 +5142,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. As florestas influenciam os ciclos da água, armazenam carbono e protegem o solo."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5020,7 +5169,8 @@
               "texto": "Queimadas nunca produzem fumaça",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A queimada pode ser um uso controlado do fogo em alguns contextos; o incêndio florestal é descontrolado e causa grandes danos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5046,7 +5196,8 @@
               "texto": "Amazônia, Manguezal, Taiga, Tundra, Pampa e Mediterrâneo",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Os seis biomas terrestres brasileiros são Amazônia, Cerrado, Mata Atlântica, Caatinga, Pantanal e Pampa. As outras listas incluem biomas de outras regiões do mundo."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5072,7 +5223,8 @@
               "texto": "Porque toda a água brasileira nasce exclusivamente no litoral",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O Cerrado abriga nascentes e áreas importantes para grandes bacias hidrográficas."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -5088,7 +5240,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. A Mata Atlântica se estende por regiões muito urbanizadas e densamente povoadas."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5114,7 +5267,8 @@
               "texto": "A formação exclusiva por dunas",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "No Pantanal, a dinâmica de cheias e secas molda o ecossistema."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5140,7 +5294,8 @@
               "texto": "Porque o solo não influencia a restauração",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Restaurar um ecossistema exige considerar espécies, condições locais, diversidade e funcionamento. Plantar qualquer árvore não basta."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -5156,7 +5311,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Conservar biomas protege também recursos hídricos, atividades econômicas, culturas e modos de vida."
         }
       ]
     },
@@ -5194,7 +5350,8 @@
               "texto": "Porque existe apenas onde há agricultura",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O solo é um sistema vivo porque abriga organismos e tem interações entre matéria orgânica, minerais, água e ar."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5220,7 +5377,8 @@
               "texto": "Eliminação de sedimentos dos rios",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A erosão leva solo fértil embora e transporta sedimentos para cursos d'água."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5246,7 +5404,8 @@
               "texto": "Produção de biogás",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Assoreamento é o acúmulo de sedimentos em rios, lagos ou outros corpos d'água."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -5262,7 +5421,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Manter o solo coberto amortece o impacto direto da chuva e reduz a erosão."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5288,7 +5448,8 @@
               "texto": "Transformar toda matéria orgânica em plástico",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A rotação de culturas diversifica o sistema produtivo e ajuda no manejo do solo, dos nutrientes e das pragas."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -5304,7 +5465,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. O uso inadequado de fertilizantes e defensivos pode contaminar solo e água."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5330,7 +5492,8 @@
               "texto": "O desperdício elimina emissões do transporte",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Quando o alimento não é consumido, a água, a energia e a terra usadas para produzi-lo são desperdiçadas."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5356,7 +5519,8 @@
               "texto": "Deixar áreas de solo permanentemente expostas",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Reduzir perdas e desperdícios ao longo da cadeia diminui a pressão sobre os recursos naturais."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5382,7 +5546,8 @@
               "texto": "Aumento da erosão superficial",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Cobertura do solo e rotação de culturas são práticas de conservação do solo."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -5398,7 +5563,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. As escolhas dos consumidores influenciam o que e como os alimentos são produzidos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5424,7 +5590,8 @@
               "texto": "Impede qualquer infiltração de água",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A matéria orgânica contribui para a estrutura do solo, a retenção de água e a disponibilidade de nutrientes."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5450,7 +5617,8 @@
               "texto": "Avaliar apenas a aparência dos alimentos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A visão mais completa combina boas práticas agrícolas com redução de perdas, consumo responsável e proteção dos recursos."
         }
       ]
     },
@@ -5489,7 +5657,8 @@
               "texto": "Trocar todas as lixeiras por modelos iguais sem analisar o fluxo",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O diagnóstico de consumo, resíduos, infraestrutura e oportunidades vem primeiro, porque só assim se definem metas e ações adequadas."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5515,7 +5684,8 @@
               "texto": "O número de televisores dos apartamentos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Um diagnóstico ambiental reúne dados como consumo de água e energia, geração de resíduos e participação dos moradores."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -5531,7 +5701,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Sinalização clara nas lixeiras reduz erros de separação."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5557,7 +5728,8 @@
               "texto": "Transformam resíduos em matéria-prima automaticamente",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Materiais contaminados aumentam os rejeitos, dificultam a triagem e reduzem o aproveitamento na cooperativa."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5583,7 +5755,8 @@
               "texto": "Cor dos uniformes da portaria",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A massa ou o volume de recicláveis coletados e a taxa de participação mostram a evolução da coleta seletiva."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5609,7 +5782,8 @@
               "texto": "Deixar torneiras abertas para testar a rede",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Monitorar o consumo, corrigir vazamentos e usar equipamentos eficientes reduz o gasto de água nas áreas comuns."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -5625,7 +5799,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Acompanhar o consumo ao longo do tempo ajuda a identificar desperdícios e avaliar melhorias."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5651,7 +5826,8 @@
               "texto": "A altura do prédio",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Antes de implantar a compostagem coletiva é preciso avaliar espaço, operação, tipos de resíduos, responsáveis e manutenção."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5677,7 +5853,8 @@
               "texto": "Porque reciclagem depende apenas da prefeitura",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Campanhas isoladas têm efeito limitado porque mudar hábito exige comunicação contínua, estrutura adequada e acompanhamento."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -5693,7 +5870,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Metas coletivas e retorno sobre os resultados aumentam o engajamento dos moradores."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5719,7 +5897,8 @@
               "texto": "Porque o serviço não gera nenhum benefício coletivo",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "As cooperativas prestam um serviço ambiental e social que envolve trabalho, infraestrutura e renda, e isso merece reconhecimento nas parcerias."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5745,7 +5924,8 @@
               "texto": "Eliminando automaticamente vazamentos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O EcoCiente apoia a gestão exibindo indicadores, progresso, registros e resultados das ações ambientais. Ele não substitui a infraestrutura nem elimina resíduos ou vazamentos."
         }
       ]
     },
@@ -5784,7 +5964,8 @@
               "texto": "Somente a presença de shopping centers",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Uma cidade sustentável considera meio ambiente, inclusão, infraestrutura, economia e qualidade de vida, e não só um desses fatores."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5810,7 +5991,8 @@
               "texto": "Afeta somente áreas rurais",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A localização de moradia, trabalho e serviços aumenta ou reduz as distâncias de deslocamento."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -5826,7 +6008,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. O saneamento básico protege a saúde pública e a qualidade ambiental."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5852,7 +6035,8 @@
               "texto": "Substituindo sistemas de transporte",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "As árvores urbanas dão sombra, ajudam no conforto térmico e oferecem outros serviços ecossistêmicos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5878,7 +6062,8 @@
               "texto": "Porque transporte não influencia qualidade de vida",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Mobilidade é o acesso das pessoas a trabalho, escola, saúde, lazer e serviços, e inclui pedestres, bicicletas e transporte coletivo, não só carros."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -5894,7 +6079,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Caminhar e pedalar são deslocamentos de baixo impacto quando há condições seguras e adequadas."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5920,7 +6106,8 @@
               "texto": "Funcionar apenas em cidades pequenas",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O transporte coletivo leva muitas pessoas usando o espaço urbano de forma mais eficiente em vários contextos. Isso não significa zero emissão."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5946,7 +6133,8 @@
               "texto": "Sim, porque não utilizam materiais ou energia",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Carros elétricos não resolvem sozinhos a mobilidade: congestionamento, uso do espaço, segurança e acesso continuam sendo desafios."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -5962,7 +6150,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Trânsito intenso e uso de combustíveis emitem poluentes que pioram o ar urbano."
         },
         {
           "tipo": "Múltipla escolha",
@@ -5988,7 +6177,8 @@
               "texto": "Substituir árvores por estacionamentos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Parques, áreas permeáveis e infraestrutura verde são soluções baseadas na natureza para o manejo de água e calor."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6014,7 +6204,8 @@
               "texto": "Servindo apenas para publicidade",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Dados públicos permitem identificar padrões e prioridades e avaliar políticas, mas não substituem as decisões humanas."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6040,7 +6231,8 @@
               "texto": "Ausência de transporte coletivo",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Calçadas seguras, transporte coletivo, arborização, drenagem adequada e serviços próximos formam um bairro sustentável."
         }
       ]
     },
@@ -6078,7 +6270,8 @@
               "texto": "Apenas o uso do carregador",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Antes de chegar ao consumidor o celular já causou impactos: extração de matérias-primas, fabricação e transporte."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6104,7 +6297,8 @@
               "texto": "Substituindo todas as pessoas em decisões públicas",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Sensores monitoram consumo de água e energia, qualidade do ar ou o enchimento de recipientes. Eles não eliminam o desperdício sozinhos."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -6120,7 +6314,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. A inteligência artificial analisa padrões ambientais, mas o resultado depende da qualidade dos dados e do uso do sistema."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6146,7 +6341,8 @@
               "texto": "O erro afeta somente a aparência do sistema",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Dados ruins podem levar a conclusões e prioridades inadequadas; a tecnologia não corrige o erro por conta própria."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6172,7 +6368,8 @@
               "texto": "Criando matéria-prima sem resíduos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A automação apoia a identificação e a separação de materiais nas centrais de triagem."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6198,7 +6395,8 @@
               "texto": "Tamanho físico de um computador",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A pegada digital é o impacto ambiental de dispositivos, redes, armazenamento, processamento e uso de serviços digitais."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -6214,7 +6412,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Usar o smartphone por mais tempo adia a fabricação de um novo aparelho."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6240,7 +6439,8 @@
               "texto": "Misturá-la aos resíduos orgânicos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A bateria deve ir para canais de coleta apropriados, sem ser perfurada ou danificada. Abrir, queimar ou misturar a orgânicos é perigoso."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6266,7 +6466,8 @@
               "texto": "Porque impactos só existem em produtos antigos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Uma inovação precisa ser avaliada além dos benefícios, porque pode ter consumo de energia, uso de materiais, riscos sociais ou efeitos inesperados."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6292,7 +6493,8 @@
               "texto": "Substituindo todas as práticas de conservação",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Sensores e dados permitem aplicar água e insumos de forma mais precisa, o que torna a agricultura mais eficiente."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -6308,7 +6510,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Trocar equipamento que ainda funciona só por moda aumenta a geração de resíduos eletrônicos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6334,7 +6537,8 @@
               "texto": "Resolver significa apenas criar um gráfico",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Medir fornece informação sobre o problema; resolver exige ações sobre suas causas ou consequências."
         }
       ]
     },
@@ -6373,7 +6577,8 @@
               "texto": "Recusar, reduzir, reutilizar e reciclar",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O modelo linear segue a sequência extrair, produzir, usar e descartar."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6399,7 +6604,8 @@
               "texto": "Dificultar reparos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A economia circular mantém produtos e materiais em uso por mais tempo e reduz a geração de resíduos."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -6415,7 +6621,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Produtos reparáveis e desmontáveis facilitam reparo, reuso e reciclagem, que são estratégias de circularidade."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6441,7 +6648,8 @@
               "texto": "Impedindo manutenção",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Aluguel e compartilhamento aumentam a utilização de um mesmo produto por pessoas diferentes, evitando novas compras."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6467,7 +6675,8 @@
               "texto": "Compra de um produto novo sem aproveitar componentes antigos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Remanufatura é recuperar e reconstruir produtos ou componentes para que voltem a uma condição de uso."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6493,7 +6702,8 @@
               "texto": "Uso exclusivo de fibras recicladas",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O fast fashion se associa a ciclos de consumo acelerado e a peças usadas por pouco tempo."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -6509,7 +6719,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Consertar, ajustar ou reutilizar uma roupa prolonga sua vida útil."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6535,7 +6746,8 @@
               "texto": "Sem qualquer função prática",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "As embalagens protegem, conservam, transportam e informam, embora também possam gerar impactos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6561,7 +6773,8 @@
               "texto": "Porque não chegam às centrais de triagem",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Embalagens com várias camadas dificultam a reciclagem porque separar os materiais pode exigir processos complexos ou indisponíveis."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6587,7 +6800,8 @@
               "texto": "Aumento de camadas sem necessidade",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Refil e embalagens retornáveis reduzem o uso de embalagens descartáveis."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -6603,7 +6817,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Reciclar é importante, mas a economia circular também envolve design, reparo, reutilização e novos modelos de negócio."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6629,7 +6844,8 @@
               "texto": "Recuperar",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Repensar é o R de avaliar se a compra é realmente necessária. Reciclar, reutilizar e \"recuperar\" não tratam disso."
         }
       ]
     },
@@ -6668,7 +6884,8 @@
               "texto": "Uma meta acompanhada de indicadores e prazos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Greenwashing é uma comunicação que exagera ou apresenta benefícios ambientais sem evidências suficientes. Dados verificáveis, transparência e metas com indicadores são o oposto."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -6684,7 +6901,8 @@
               "texto": "Falso",
               "correta": true
             }
-          ]
+          ],
+          "explicacao": "Falso. Palavras como \"eco\", \"verde\" ou \"natural\" não provam nada sozinhas; é preciso evidência."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6710,7 +6928,8 @@
               "texto": "Uma frase sem números, fonte ou critério",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A confiabilidade aumenta com dados verificáveis, metodologia, escopo e transparência. Cor verde ou imagem de floresta não comprovam nada."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6736,7 +6955,8 @@
               "texto": "A cor do uniforme dos funcionários",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Meta específica, prazo, indicador, escopo e forma de acompanhamento permitem avaliar se a promessa é séria."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -6752,7 +6972,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Destacar só um atributo favorável e ignorar os impactos relevantes do resto do produto engana o consumidor."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6778,7 +6999,8 @@
               "texto": "Ignorar qualquer dado técnico disponível",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Sem evidência, a postura adequada é buscar mais informações antes de aceitar a alegação. A cor verde não a comprova."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6804,7 +7026,8 @@
               "texto": "Porque indicadores não funcionam em sustentabilidade",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Sem prazo, fica difícil avaliar o progresso e cobrar responsabilidade ao longo do tempo."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -6820,7 +7043,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Certificações ajudam, mas é preciso verificar o que elas de fato certificam e quem define o padrão."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6846,7 +7070,8 @@
               "texto": "Quando reduz materiais e aumenta durabilidade",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O termo é usado de forma superficial quando aparece no marketing sem mudanças reais em design, uso, retorno ou reaproveitamento."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6872,7 +7097,8 @@
               "texto": "Porque substitui a medição de impactos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Reconhecer limitações mostra transparência e evita apresentar uma melhoria parcial como solução completa."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6898,7 +7124,8 @@
               "texto": "O produto tem um nome curto?",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Perguntar qual é a evidência e qual parte do produto ou da operação a afirmação cobre mostra o alcance real da promessa."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -6914,7 +7141,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. \"100% sustentável\" é uma alegação absoluta demais, já que a sustentabilidade envolve vários impactos e raramente se resume sem contexto."
         }
       ]
     },
@@ -6951,7 +7179,8 @@
               "texto": "Comprar, usar, descartar, reciclar e repetir",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A ordem trabalhada na trilha é repensar, recusar, reduzir, reutilizar e reciclar: primeiro se evita o resíduo, por último se recicla."
         },
         {
           "tipo": "Múltipla escolha",
@@ -6977,7 +7206,8 @@
               "texto": "Todos são aceitos por qualquer coleta seletiva",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Reciclável, orgânico, rejeito e resíduo especial são categorias diferentes, com fluxos de destinação distintos."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -6993,7 +7223,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Uma boa separação nas casas melhora a qualidade do material que chega às cooperativas."
         },
         {
           "tipo": "Múltipla escolha",
@@ -7019,7 +7250,8 @@
               "texto": "Reduzir desperdício serve apenas para embalagens",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Reduzir o desperdício evita gerar parte do resíduo; a compostagem trata o resíduo orgânico que já foi gerado. São ações complementares, não iguais."
         },
         {
           "tipo": "Múltipla escolha",
@@ -7045,7 +7277,8 @@
               "texto": "Oceano e água urbana são sistemas totalmente desconectados",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Esgoto e resíduos mal geridos podem chegar aos rios e, depois, a ambientes costeiros e marinhos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -7071,7 +7304,8 @@
               "texto": "Não existe diferença",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Eficiência energética é oferecer o mesmo serviço usando menos energia, e não deixar de usar energia."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -7087,7 +7321,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. O efeito estufa natural é necessário à vida, mas sua intensificação por gases adicionais contribui para o aquecimento global."
         },
         {
           "tipo": "Múltipla escolha",
@@ -7113,7 +7348,8 @@
               "texto": "Porque o ozônio não existe na atmosfera",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Camada de ozônio e mudanças climáticas envolvem mecanismos atmosféricos diferentes, embora possam existir relações entre substâncias e políticas ambientais."
         },
         {
           "tipo": "Múltipla escolha",
@@ -7139,7 +7375,8 @@
               "texto": "O clima não influencia ecossistemas",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Ecossistemas influenciam os ciclos de água e carbono, os habitats e a estabilidade ambiental, então biodiversidade, florestas, água e clima estão conectados."
         },
         {
           "tipo": "Múltipla escolha",
@@ -7165,7 +7402,8 @@
               "texto": "Somente coleta seletiva",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A cidade sustentável combina mobilidade, saneamento, energia eficiente, áreas verdes, inclusão e planejamento. Nenhum fator isolado basta."
         },
         {
           "tipo": "Múltipla escolha",
@@ -7191,7 +7429,8 @@
               "texto": "Prioriza descartáveis",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A economia circular busca durabilidade, reparo, reuso, retorno de materiais e redução de resíduos já no design do produto."
         },
         {
           "tipo": "Múltipla escolha",
@@ -7217,7 +7456,8 @@
               "texto": "Certificação claramente explicada",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Uma alegação ambiental vaga, sem dados, escopo ou evidências verificáveis, é um sinal de possível greenwashing."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -7233,7 +7473,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Indicadores mostram se as ações do condomínio estão de fato melhorando ao longo do tempo."
         },
         {
           "tipo": "Múltipla escolha",
@@ -7259,7 +7500,8 @@
               "texto": "Tecnologia e ambiente não possuem qualquer relação",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A tecnologia pode ajudar a resolver problemas ambientais, mas também consome materiais e energia e gera impactos."
         },
         {
           "tipo": "Múltipla escolha",
@@ -7285,7 +7527,8 @@
               "texto": "São sinônimos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Mitigação atua sobre as causas das mudanças climáticas; adaptação reduz os riscos e as vulnerabilidades aos impactos."
         },
         {
           "tipo": "Verdadeiro ou falso",
@@ -7301,7 +7544,8 @@
               "texto": "Falso",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "Verdadeiro. Soluções eficazes combinam ações individuais, coletivas, empresariais e governamentais."
         },
         {
           "tipo": "Múltipla escolha",
@@ -7327,7 +7571,8 @@
               "texto": "Esperar uma solução tecnológica resolver todos os hábitos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "O plano mais consistente é escolher alguns hábitos de impacto relevante, definir metas e acompanhar os resultados."
         },
         {
           "tipo": "Múltipla escolha",
@@ -7353,7 +7598,8 @@
               "texto": "Evitar qualquer consumo ou uso de recursos",
               "correta": false
             }
-          ]
+          ],
+          "explicacao": "A ideia central ao concluir a trilha é transformar conhecimento em decisões e ações contínuas, individuais e coletivas."
         }
       ]
     }

@@ -398,9 +398,9 @@ def criar_endereco(cur):
     return fetch_id(
         cur,
         """INSERT INTO tb_enderecos
-               (cep, estado, cidade, logradouro, numero, complemento)
-           VALUES (%s, %s, %s, %s, %s, %s) RETURNING id_endereco""",
-        (cep, uf, cidade, rua, numero, fk.secondary_address()),
+               (cep, estado, cidade, bairro, logradouro, numero, complemento)
+           VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id_endereco""",
+        (cep, uf, cidade, fk.bairro(), rua, numero, fk.secondary_address()),
     )
 
 
@@ -435,8 +435,8 @@ def criar_usuario(cur, tipo_usuario_id, perfil=None, desde=None, comercial=False
     usuario_id = fetch_id(
         cur,
         """WITH e AS (
-               INSERT INTO tb_enderecos (cep, estado, cidade, logradouro, numero, complemento)
-               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id_endereco
+               INSERT INTO tb_enderecos (cep, estado, cidade, bairro, logradouro, numero, complemento)
+               VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id_endereco
            ), u AS (
                INSERT INTO tb_usuarios
                    (nome_usuario, email_usuario, senha_hash, data_nascimento, cpf,
@@ -449,7 +449,7 @@ def criar_usuario(cur, tipo_usuario_id, perfil=None, desde=None, comercial=False
            )
            SELECT id_usuario FROM u""",
         (
-            cep, uf, cidade, rua, numero, fk.secondary_address(),
+            cep, uf, cidade, fk.bairro(), rua, numero, fk.secondary_address(),
             nome, email, senha_hash, fk.date_of_birth(18, 75), cpf_unico(fk),
             fk.url(path="avatares", ext="jpg") if fk.boolean(40) else None,
             ativo, registro_em, tipo_usuario_id,
@@ -488,16 +488,17 @@ def criar_condominio(cur, tipo_condominio_id, sindico_id, nome_fantasia, comerci
     cnpj         = fk.cnpj() if comercial else (fk.cnpj() if fk.boolean(20) else None)
     codigo_acesso = proximo_codigo_acesso()
     ativo        = fk.boolean(92)
+    url_foto     = fk.url(path="condominios", ext="jpg") if fk.boolean(85) else None
 
     return fetch_id(
         cur,
         """INSERT INTO tb_condominios
                (nome_condominio, cnpj, codigo_acesso, ativo,
-                tipo_condominio_id, sindico_id, endereco_id)
-           VALUES (%s, %s, %s, %s, %s, %s, %s)
+                tipo_condominio_id, sindico_id, endereco_id, url_foto)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
            RETURNING id_condominio""",
         (nome_fantasia, cnpj, codigo_acesso, ativo,
-         tipo_condominio_id, sindico_id, endereco_id),
+         tipo_condominio_id, sindico_id, endereco_id, url_foto),
     )
 
 
@@ -510,15 +511,14 @@ def criar_torre(cur, condominio_id, nome_torre):
     )
 
 
-def criar_morador(cur, usuario_id, condominio_id):
-    # tb_moradores só tem usuario_id x condominio_id -- sem unidade/torre.
-    # A torre de um ocupante residencial fica só no dict `ocupante` em
-    # main.py, para popular tb_postagens.torre_id e as tentativas de quiz.
+def criar_morador(cur, usuario_id, condominio_id, torre_id=None):
+    # torre_id é nulo no comercial. A FK composta (torre_id, condominio_id)
+    # garante que a torre pertence ao mesmo condomínio do morador.
     return fetch_id(
         cur,
-        """INSERT INTO tb_moradores (usuario_id, condominio_id)
-           VALUES (%s, %s) RETURNING id_morador""",
-        (usuario_id, condominio_id),
+        """INSERT INTO tb_moradores (usuario_id, condominio_id, torre_id)
+           VALUES (%s, %s, %s) RETURNING id_morador""",
+        (usuario_id, condominio_id, torre_id),
     )
 
 
@@ -896,23 +896,35 @@ def registrar_ledger_pontos(cur, seed):
 # ==============================================================================
 
 def criar_agendamento(cur, condominio_id, cooperativa_id, status_ids, data_inicio,
-                      status_final, recorrente):
+                      status_final, recorrente, solicitante_id, origem, responsavel_id):
     """
     Insere como "Agendado" e, se o status final for outro, faz o UPDATE --
     a trigger de auditoria registra a transição como no app.
     possui_recorrencia é setado direto aqui -- não há trigger que
     recalcule a partir de tb_rel_recorrencias_agendamentos.
+
+    `solicitante_id` abriu a solicitação pelo lado `origem` (CONDOMINIO ou
+    COOPERATIVA); `responsavel_id` é quem aceitou/recusou, sempre do lado
+    oposto. Quem ainda está "Agendado" não tem resposta (campos nulos).
+    A trigger trg_validar_partes_agendamento checa as duas pontas.
     """
     data_fim = data_inicio + timedelta(hours=rng.choice([1, 2, 3]))
+    respondido = status_final != "Agendado"
+    respondido_em = (min(data_inicio - timedelta(hours=rng.randint(12, 240)), AGORA)
+                     if respondido else None)
     agendamento_id = fetch_id(
         cur,
         """INSERT INTO tb_agendamentos_coletas
                (condominio_id, cooperativa_id, status_agendamento_id,
-                data_inicio, data_fim, possui_recorrencia)
-           VALUES (%s, %s, %s, %s, %s, %s)
+                data_inicio, data_fim, possui_recorrencia,
+                solicitado_por_usuario_id, origem_solicitacao,
+                respondido_por_usuario_id, respondido_em)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            RETURNING id_agendamento_coleta""",
         (condominio_id, cooperativa_id, status_ids["Agendado"],
-         data_inicio, data_fim, recorrente),
+         data_inicio, data_fim, recorrente,
+         solicitante_id, origem,
+         responsavel_id if respondido else None, respondido_em),
     )
     if status_final != "Agendado":
         cur.execute(
@@ -967,6 +979,101 @@ def criar_avaliacao_visita(cur, visita_coleta_id, usuario_avaliador_id, qualidad
             min(data_visita + timedelta(hours=rng.randint(1, 72)), AGORA),
         ),
     )
+
+
+# ==============================================================================
+# 6b. CHAT COOPERATIVA x CONDOMÍNIO
+# ==============================================================================
+
+_MENSAGENS_CHAT_COOPERATIVA = [
+    "Olá! Gostaríamos de combinar a próxima coleta de recicláveis do condomínio.",
+    "Podemos agendar a coleta para a próxima semana?",
+    "Recebemos a solicitação. Qual o melhor horário para a portaria?",
+    "Confirmamos a coleta no horário combinado.",
+    "O caminhão chega por volta das 8h. Por favor, deixem os materiais separados.",
+    "Obrigado pelo retorno! Ficamos à disposição.",
+    "Tivemos um imprevisto e precisamos reagendar a coleta.",
+]
+
+_MENSAGENS_CHAT_CONDOMINIO = [
+    "Bom dia! Podem passar na próxima terça?",
+    "Perfeito, a portaria já está avisada.",
+    "Conseguem trazer uma caçamba extra? Acumulou papelão no bloco B.",
+    "Recebido. Obrigado pela parceria!",
+    "Podemos remarcar para sexta-feira?",
+    "Combinado, deixaremos o material na área de coleta.",
+]
+
+
+def popular_chat_cooperativas(cur, parcerias):
+    """
+    Uma conversa por par condomínio x cooperativa que tem agendamento
+    (UNIQUE em tb_conversas). `parcerias` = {(condominio_id, cooperativa_id):
+    {"sindico", "cooperativa", "inicio"}}. A cooperativa sempre abre o chat
+    (trg_validar_mensagem_conversa) e o síndico só responde depois disso.
+    As primeiras mensagens entram num lote à parte: a trigger confere se já
+    existe mensagem anterior, então a abertura precisa estar gravada antes
+    das respostas. ~10% das conversas ficam inativas (parceria encerrada).
+    Retorna (qtd_conversas, qtd_mensagens).
+    """
+    conversas, mensagens = [], []
+    for (condominio_id, coop_id), p in parcerias.items():
+        inicio = min(p["inicio"] - timedelta(days=rng.randint(3, 20)),
+                     AGORA - timedelta(hours=1))
+        conversas.append((condominio_id, coop_id, inicio))
+
+        fala_cooperativa = True  # a cooperativa abre o chat
+        momento = inicio
+        for i in range(rng.randint(2, 12)):
+            if i and fk.boolean(40):
+                fala_cooperativa = not fala_cooperativa
+            if fala_cooperativa:
+                tipo, uid, textos = "COOPERATIVA", p["cooperativa"], _MENSAGENS_CHAT_COOPERATIVA
+            else:
+                tipo, uid, textos = "CONDOMINIO", p["sindico"], _MENSAGENS_CHAT_CONDOMINIO
+            momento = min(momento + timedelta(hours=rng.randint(1, 96)), AGORA)
+            lida = None if fk.boolean(8) else min(momento + timedelta(minutes=rng.randint(5, 600)), AGORA)
+            mensagens.append((condominio_id, coop_id, uid, tipo, rng.choice(textos), momento, lida))
+
+    linhas = execute_values(
+        cur,
+        """INSERT INTO tb_conversas (condominio_id, cooperativa_id, criada_em)
+           VALUES %s RETURNING id_conversa, condominio_id, cooperativa_id""",
+        conversas, fetch=True,
+    )
+    ids = {(condominio_id, coop_id): id_conversa for id_conversa, condominio_id, coop_id in linhas}
+
+    # Cada mensagem vira (conversa_id, remetente, tipo, texto, enviada_em, lida_em).
+    # Ordem cronológica dentro da conversa; a 1a é sempre da cooperativa.
+    por_conversa = {}
+    for condominio_id, coop_id, uid, tipo, texto, enviada, lida in mensagens:
+        por_conversa.setdefault((condominio_id, coop_id), []).append((uid, tipo, texto, enviada, lida))
+    abertura, respostas = [], []
+    for chave, msgs in por_conversa.items():
+        msgs.sort(key=lambda m: m[3])
+        conversa_id = ids[chave]
+        abertura.append((conversa_id,) + msgs[0])
+        respostas.extend((conversa_id,) + m for m in msgs[1:])
+
+    execute_values(
+        cur,
+        """INSERT INTO tb_mensagens_conversas
+               (conversa_id, remetente_usuario_id, remetente_tipo, conteudo, enviada_em, lida_em)
+           VALUES %s""",
+        abertura, page_size=5000,
+    )
+    execute_values(
+        cur,
+        """INSERT INTO tb_mensagens_conversas
+               (conversa_id, remetente_usuario_id, remetente_tipo, conteudo, enviada_em, lida_em)
+           VALUES %s""",
+        respostas, page_size=5000,
+    )
+
+    inativas = [id_conversa for id_conversa in ids.values() if fk.boolean(10)]
+    if inativas:
+        cur.execute("UPDATE tb_conversas SET ativa = FALSE WHERE id_conversa = ANY(%s)", (inativas,))
+    return len(ids), len(abertura) + len(respostas)
 
 
 # ==============================================================================
@@ -1037,7 +1144,9 @@ def popular_quizzes(cur, cursos_ids, aulas_por_curso):
     """
     Cria os 20 quizzes reais da trilha, cada um na última aula do seu curso
     âncora (aulas_por_curso[curso][-1]), com as perguntas/alternativas reais
-    do banco de quizzes.
+    do banco de quizzes. Idempotente: se já houver perguntas no banco, só preenche
+    a explicação das que ainda estiverem sem (não sobrescreve edições). No fluxo do
+    main.py as tabelas são truncadas antes, então esse caminho não roda ali.
 
     Retorna {aula_id: {"quiz_id", "nota_minima", "perguntas": [(pergunta_id, [(alt_id, correta), ...]), ...]}}
     -- só as aulas que têm quiz aparecem nesse dict.
@@ -1069,14 +1178,24 @@ def popular_quizzes(cur, cursos_ids, aulas_por_curso):
             )
 
         cur.execute(
-            "SELECT id_pergunta FROM tb_perguntas_quiz WHERE quiz_id = %s ORDER BY ordem",
+            "SELECT id_pergunta, ordem FROM tb_perguntas_quiz WHERE quiz_id = %s ORDER BY ordem",
             (quiz_id,),
         )
         perguntas_existentes = cur.fetchall()
 
         perguntas = []
         if perguntas_existentes:
-            for (pergunta_id,) in perguntas_existentes:
+            # preenche só onde a explicação é nula, para não sobrescrever o que foi editado
+            execute_values(
+                cur,
+                """UPDATE tb_perguntas_quiz p SET explicacao = v.explicacao
+                   FROM (VALUES %s) AS v(id_pergunta, explicacao)
+                   WHERE p.id_pergunta = v.id_pergunta AND p.explicacao IS NULL""",
+                [(pergunta_id, quiz["perguntas"][ordem - 1].get("explicacao"))
+                 for pergunta_id, ordem in perguntas_existentes
+                 if 1 <= ordem <= len(quiz["perguntas"])],
+            )
+            for pergunta_id, _ in perguntas_existentes:
                 cur.execute(
                     "SELECT id_alternativa, correta FROM tb_alternativas_quiz WHERE pergunta_id = %s",
                     (pergunta_id,),
@@ -1086,9 +1205,9 @@ def popular_quizzes(cur, cursos_ids, aulas_por_curso):
             for ordem, pergunta in enumerate(quiz["perguntas"], start=1):
                 pergunta_id = fetch_id(
                     cur,
-                    """INSERT INTO tb_perguntas_quiz (quiz_id, enunciado, ordem)
-                       VALUES (%s, %s, %s) RETURNING id_pergunta""",
-                    (quiz_id, pergunta["enunciado"], ordem),
+                    """INSERT INTO tb_perguntas_quiz (quiz_id, enunciado, ordem, explicacao)
+                       VALUES (%s, %s, %s, %s) RETURNING id_pergunta""",
+                    (quiz_id, pergunta["enunciado"], ordem, pergunta.get("explicacao")),
                 )
                 linhas = execute_values(
                     cur,
@@ -1392,6 +1511,9 @@ def limpar_dados_banco(cur):
     fixos reaproveitados entre execuções.
     """
     tabelas = [
+        "tb_mensagens_conversas",
+        "tb_conversas",
+        "tb_migracao_ids_map",
         "tb_metricas_dau",
         "tb_atividades_diarias_usuarios",
         "tb_movimentacoes_pontos",
