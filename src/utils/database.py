@@ -1153,9 +1153,9 @@ def popular_quizzes(cur, cursos_ids, aulas_por_curso):
     """
     Cria os 20 quizzes reais da trilha, cada um na última aula do seu curso
     âncora (aulas_por_curso[curso][-1]), com as perguntas/alternativas reais
-    do banco de quizzes. Idempotente: se já houver perguntas no banco, só preenche
-    a explicação das que ainda estiverem sem (não sobrescreve edições). No fluxo do
-    main.py as tabelas são truncadas antes, então esse caminho não roda ali.
+    do banco de quizzes. Idempotente: se já houver perguntas no banco, não duplica;
+    no fim, preencher_explicacoes_quizzes completa as explicações que estiverem sem
+    (não sobrescreve edições). No fluxo do main.py as tabelas são truncadas antes.
 
     Retorna {aula_id: {"quiz_id", "nota_minima", "perguntas": [(pergunta_id, [(alt_id, correta), ...]), ...]}}
     -- só as aulas que têm quiz aparecem nesse dict.
@@ -1194,16 +1194,6 @@ def popular_quizzes(cur, cursos_ids, aulas_por_curso):
 
         perguntas = []
         if perguntas_existentes:
-            # preenche só onde a explicação é nula, para não sobrescrever o que foi editado
-            execute_values(
-                cur,
-                """UPDATE tb_perguntas_quiz p SET explicacao = v.explicacao
-                   FROM (VALUES %s) AS v(id_pergunta, explicacao)
-                   WHERE p.id_pergunta = v.id_pergunta AND p.explicacao IS NULL""",
-                [(pergunta_id, quiz["perguntas"][ordem - 1].get("explicacao"))
-                 for pergunta_id, ordem in perguntas_existentes
-                 if 1 <= ordem <= len(quiz["perguntas"])],
-            )
             for pergunta_id, _ in perguntas_existentes:
                 cur.execute(
                     "SELECT id_alternativa, correta FROM tb_alternativas_quiz WHERE pergunta_id = %s",
@@ -1233,7 +1223,38 @@ def popular_quizzes(cur, cursos_ids, aulas_por_curso):
             "perguntas": perguntas,
         }
 
+    preencher_explicacoes_quizzes(cur, curriculo)
     return quizzes_por_aula
+
+
+def preencher_explicacoes_quizzes(cur, curriculo=None):
+    """
+    Preenche tb_perguntas_quiz.explicacao a partir do currículo, casando cada
+    pergunta por titulo_quiz + ordem. Só mexe onde a explicação está nula ou
+    vazia, então não sobrescreve edições e pode rodar quantas vezes quiser.
+    Serve para bancos populados antes da coluna existir, sem apagar nada
+    (python main.py --so-explicacoes). Retorna quantas perguntas foram preenchidas.
+    """
+    curriculo = curriculo or _carregar_curriculo()
+    valores = [
+        (quiz["titulo_quiz"], ordem, pergunta["explicacao"])
+        for quiz in curriculo["quizzes"]
+        for ordem, pergunta in enumerate(quiz["perguntas"], start=1)
+        if pergunta.get("explicacao")
+    ]
+    cur.execute("ALTER TABLE tb_perguntas_quiz ADD COLUMN IF NOT EXISTS explicacao TEXT")
+    # page_size cobre tudo num UPDATE só, para o rowcount contar todas as linhas
+    execute_values(
+        cur,
+        """UPDATE tb_perguntas_quiz p SET explicacao = v.explicacao
+           FROM (VALUES %s) AS v(titulo_quiz, ordem, explicacao)
+           JOIN tb_quizzes q ON q.titulo_quiz = v.titulo_quiz
+           WHERE p.quiz_id = q.id_quiz AND p.ordem = v.ordem
+             AND (p.explicacao IS NULL OR btrim(p.explicacao) = '')""",
+        valores,
+        page_size=len(valores),
+    )
+    return cur.rowcount
 
 
 def simular_trilhas(cur, usuarios_ensino, ocupante_por_usuario, aulas_por_curso, quizzes_por_aula):
