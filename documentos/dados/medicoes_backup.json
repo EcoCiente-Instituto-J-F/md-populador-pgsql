@@ -1,0 +1,32 @@
+{
+  "medido_em": "2026-11-01",
+  "ambiente": "Docker postgres:16 local (Windows 11, Docker Desktop), cliente pg_dump 16.x dentro do contêiner",
+  "escala_populador": "leve",
+  "tamanho_banco_mb": 28.1,
+  "tamanho_dump_mb": 1.5,
+  "tempo_populador_s": 17.4,
+  "tempo_backup_s": 0.5,
+  "tempo_restauracao_s": 2.0,
+  "contagens": {
+    "tb_usuarios": [435, 435],
+    "tb_condominios": [7, 7],
+    "tb_moradores": [303, 303],
+    "tb_cooperativas": [3, 3],
+    "tb_postagens": [1595, 1595],
+    "tb_rel_votos_postagens": [8591, 8591],
+    "tb_agendamentos_coletas": [42, 42],
+    "tb_visitas_coletas": [155, 155],
+    "tb_cursos": [40, 40],
+    "tb_aulas": [238, 238],
+    "tb_quizzes": [20, 20],
+    "tb_tentativas_quiz": [134, 134],
+    "tb_movimentacoes_pontos": [1916, 1916],
+    "tb_notificacoes": [4190, 4190],
+    "tb_log_auditoria": [16020, 16020],
+    "fato_postagens": [1595, 1595],
+    "fato_coletas": [155, 155]
+  },
+  "contagens_iguais": true,
+  "schema_corrigido_em_copia": "sql/ecociente_schema.sql falha com 'relation \"tb_recuperacoes_senha\" does not exist': o CREATE INDEX idx_esqueci_senha_usuario_id (linha 613) vem antes do CREATE TABLE tb_recuperacoes_senha (linha 2164). Na cópia temporária o índice foi movido para logo depois do CREATE TABLE; o arquivo em sql/ não foi alterado. O ecociente_datamart.sql aplicou sem erros.",
+  "ps1_validado": "ponta a ponta em PowerShell 7.4.7 (contêiner mcr.microsoft.com/powershell:lts-ubuntu-22.04 com postgresql-client-16 contra o mesmo PostgreSQL 16): backup, retenção, falha, restore, -Comparar, -Tabela/-Truncar. No Windows PowerShell 5.1 do host (sem pg_dump) só foi executado até a detecção da falta do binário (mensagem e código de saída corretos, parâmetros e -Ajuda funcionando); o cálculo manual de semana ISO usado no 5.1 foi validado contra System.Globalization.ISOWeek (0 divergências, 2019-2030)."
+}

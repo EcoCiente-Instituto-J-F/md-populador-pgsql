@@ -1,0 +1,2110 @@
+{
+  "fonte": "documentos/origem/catalogo_atual.html",
+  "titulo": "EcoCiente · Catálogo de Dados",
+  "apresentacao": "Referência completa do schema PostgreSQL do sistema EcoCiente: 51 tabelas organizadas em 11 grupos funcionais, com permissões por perfil, relacionamentos, triggers e regras de negócio documentadas tabela a tabela.",
+  "como_ler": "O banco é em PostgreSQL e tem 51 tabelas, separadas em 11 grupos: Domínio/Lookup, Usuários (com herança), Contato e Comunicação, Condomínio e Estrutura, Pontos de Coleta, Moderação e Confiança, Postagens, Agendamentos e Coleta, Educação, Auditoria e Data Mart (Star Schema).",
+  "perfis": [
+    {
+      "nome": "DBA / Admin",
+      "descricao": "Acesso total de leitura e escrita em praticamente tudo — é quem administra o banco."
+    },
+    {
+      "nome": "Síndico",
+      "descricao": "Responsável pelo condomínio, residencial ou comercial."
+    },
+    {
+      "nome": "Morador",
+      "descricao": "Morador residencial, usuário comercial ou usuário comum, dependendo da tabela."
+    },
+    {
+      "nome": "Cooperativa",
+      "descricao": "Pessoa jurídica responsável pela coleta dos materiais recicláveis."
+    },
+    {
+      "nome": "Sistema",
+      "descricao": "Não é uma pessoa — é uma trigger, procedure ou function rodando por trás."
+    }
+  ],
+  "badges": {
+    "R": "Leitura",
+    "W": "Escrita",
+    "RW": "Leitura e escrita",
+    "0": "Sem acesso",
+    "*": "acesso restrito"
+  },
+  "camadas": [
+    {
+      "id": "dominio",
+      "numero": 1,
+      "nome": "Domínio / Lookup",
+      "descricao": "Tabelas de referência — listas fixas que o sistema usa para não deixar \"número mágico\" espalhado pelo código.",
+      "qtd_tabelas_texto": "11 tabelas",
+      "tabelas": [
+        {
+          "nome": "tb_lkp_tipos_usuarios",
+          "tipo": "Lookup",
+          "descricao_curta": "Tipos de usuário do sistema, usados como filtro rápido.",
+          "descricao": "Guarda os tipos de usuário que existem no sistema, servindo de filtro rápido sem precisar fazer JOIN — quem garante de verdade o tipo é a tabela de herança correspondente (tb_sindicos, tb_moradores ou tb_cooperativas).",
+          "permissoes": [
+            {
+              "perfil": "Usuário",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Esta tabela não deve ser alterada em produção sem revisar os subtipos de herança."
+          ],
+          "observacoes": [
+            "O subtipo \"usuário comum\" (sem vínculo com condomínio) não existe mais como tabela própria neste script — confirmar se ainda é um valor válido aqui ou se foi descontinuado."
+          ]
+        },
+        {
+          "nome": "tb_lkp_tipos_condominios",
+          "tipo": "Lookup",
+          "descricao_curta": "Classifica o condomínio como residencial ou comercial.",
+          "descricao": "Classifica o condomínio como residencial ou comercial — é essa tabela que diferencia o fluxo do síndico residencial do síndico comercial, não uma tabela separada pra cada um.",
+          "permissoes": [
+            {
+              "perfil": "Usuário",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [],
+          "observacoes": [
+            "O script não tem um CHECK garantindo CNPJ obrigatório quando o tipo do condomínio é comercial — se essa regra ainda vale, hoje ela estaria só na aplicação. A confirmar."
+          ]
+        },
+        {
+          "nome": "tb_lkp_status_agendamentos",
+          "tipo": "Lookup",
+          "descricao_curta": "Status do ciclo de vida de um agendamento de coleta.",
+          "descricao": "É o status do ciclo de vida de um agendamento de coleta (ex.: Agendado, Confirmado, Recusado, Realizado, Cancelado).",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "R",
+              "detalhe": "dentro de procedure"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [],
+          "observacoes": [
+            "O script não faz o INSERT inicial desses status (diferente de tipos_eventos_auditados/tipos_operacoes_auditoria, que são populados de forma idempotente na Seção 12) — confirmar onde esses valores são carregados."
+          ]
+        },
+        {
+          "nome": "tb_lkp_dias_semanas",
+          "tipo": "Lookup",
+          "descricao_curta": "Lookup dos dias da semana para recorrência de coletas.",
+          "descricao": "Lookup dos dias da semana, usado pra definir a recorrência dos agendamentos de coleta.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Um dia da semana não pode ser excluído se tiver recorrência vinculada a ele (FK)."
+          ],
+          "observacoes": []
+        },
+        {
+          "nome": "tb_enderecos",
+          "tipo": "Lookup",
+          "descricao_curta": "Endereços de condomínios, cooperativas e pontos de coleta.",
+          "descricao": "Guarda o endereço de condomínios, cooperativas e pontos de coleta — CEP, estado, cidade, logradouro, número e complemento. Cada condomínio e cada cooperativa tem seu próprio endereço (relação de 1 pra 1, via UNIQUE), mas os pontos de coleta podem compartilhar endereço entre si.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "RW*",
+              "detalhe": "restrito ao próprio"
+            },
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "RW*",
+              "detalhe": "restrito ao próprio"
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Um endereço não pode ser excluído enquanto um condomínio ou cooperativa estiver usando ele (FK)."
+          ],
+          "observacoes": [
+            "Os campos de latitude/longitude que existiam antes não aparecem mais nessa tabela no script novo — se o mapa/geolocalização ainda depende disso, precisa confirmar onde esse dado passou a morar."
+          ]
+        },
+        {
+          "nome": "tb_lkp_categorias_residuos",
+          "tipo": "Lookup",
+          "descricao_curta": "Categorias de resíduos recicláveis, agora com pontuação e teto por ciclo.",
+          "descricao": "Define as categorias de resíduo que o sistema aceita (papel, vidro, metal, plástico etc.), cada uma com cor de identificação, se é reciclável, quantos pontos vale uma postagem aprovada dessa categoria (pontos_base) e, opcionalmente, um teto de pontos por usuário por ciclo mensal (limite_pontos_ciclo). O cálculo de quanto um usuário ainda pode ganhar no mês é feito pela function fn_pontos_disponiveis_postagem.",
+          "permissoes": [
+            {
+              "perfil": "Usuário",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "pontos_base precisa ser maior que zero (CHECK).",
+            "limite_pontos_ciclo, quando preenchido, não pode ser negativo (CHECK).",
+            "Quando limite_pontos_ciclo é NULL, não existe teto — a categoria sempre concede o valor cheio de pontos_base."
+          ],
+          "observacoes": [
+            "A antiga tabela separada de regras de pontuação (regras_pontuacao) não existe mais — a pontuação por postagem agora vive direto aqui, dentro da categoria."
+          ]
+        },
+        {
+          "nome": "tb_lkp_status_validacoes_postagens",
+          "tipo": "Lookup",
+          "descricao_curta": "Status possíveis de uma postagem dentro da moderação comunitária.",
+          "descricao": "Lookup com os três status que uma postagem pode assumir durante a moderação: aprovada, em_analise ou reprovada. É essa tabela que tb_postagens.status_validacao_id referencia; o default de uma postagem nova é o id 1, que o comentário do schema documenta como \"aprovada\".",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "R",
+              "detalhe": "dentro da procedure sp_processar_voto_postagem"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "O status default de uma nova postagem é o de id 1 — importante garantir na carga inicial que id 1 corresponda mesmo a \"aprovada\", já que é a ordem de inserção que define o id."
+          ],
+          "observacoes": [
+            "Tabela nova — regras e permissões rascunhadas com base no padrão de tb_lkp_status_agendamentos, a revisar."
+          ]
+        },
+        {
+          "nome": "tb_lkp_tipos_votos_postagens",
+          "tipo": "Lookup",
+          "descricao_curta": "Os dois tipos de voto que um morador pode dar numa postagem.",
+          "descricao": "Lookup simples com os dois tipos de voto possíveis em tb_rel_votos_postagens: aprovar ou denunciar.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "R",
+              "detalhe": "dentro da procedure sp_processar_voto_postagem"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [],
+          "observacoes": [
+            "Tabela nova — permissões rascunhadas com base no padrão das outras lookups de processo, a revisar."
+          ]
+        },
+        {
+          "nome": "tb_lkp_motivos_denuncia",
+          "tipo": "Lookup",
+          "descricao_curta": "Motivos pré-definidos que o morador escolhe ao denunciar uma postagem.",
+          "descricao": "Lista os motivos de denúncia disponíveis (o comentário do schema cita como exemplo \"não é lixo reciclável\", \"foto não corresponde à categoria\", \"foto antiga/reutilizada\" e \"spam/abuso\"), cada um podendo ser desativado (ativo=false) sem apagar o histórico de denúncias que já usaram aquele motivo.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "R",
+              "detalhe": "dentro da procedure sp_processar_voto_postagem"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "motivo_denuncia_id é obrigatório em tb_rel_votos_postagens sempre que o voto é do tipo \"denunciar\" (validado na procedure, não por CHECK).",
+            "Motivo inativo (ativo=false) não deveria aparecer como opção nova, mas continua valendo pras denúncias antigas que já usaram ele."
+          ],
+          "observacoes": [
+            "Tabela nova — permissões rascunhadas com base no padrão das outras lookups, a revisar."
+          ]
+        },
+        {
+          "nome": "tb_lkp_tipos_eventos_auditados",
+          "tipo": "Lookup",
+          "descricao_curta": "Discrimina qual subtipo de auditoria guarda os detalhes de cada registro.",
+          "descricao": "É o discriminador rápido da herança de auditoria — indica se um registro de tb_log_auditoria tem seus detalhes em tb_log_auditoria_postagens, tb_log_auditoria_agendamentos_coletas ou tb_log_auditoria_usuarios_condominios. O próprio script já insere os 3 valores (postagem, agendamento_coleta, usuario_condominio) de forma idempotente.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "R",
+              "detalhe": "usado pelas triggers de auditoria"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [],
+          "observacoes": [
+            "Tabela nova — só quem mexe com auditoria/compliance precisa enxergar essa tabela."
+          ]
+        },
+        {
+          "nome": "tb_lkp_tipos_operacoes_auditoria",
+          "tipo": "Lookup",
+          "descricao_curta": "INSERT, UPDATE ou DELETE — o tipo de operação registrada na auditoria.",
+          "descricao": "Lookup com os três tipos de operação de banco que a auditoria registra (INSERT, UPDATE, DELETE), inseridos de forma idempotente pelo próprio script.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "R",
+              "detalhe": "usado pelas triggers de auditoria"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [],
+          "observacoes": [
+            "Tabela nova — mesmo padrão de acesso de tb_lkp_tipos_eventos_auditados."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "usuarios",
+      "numero": 2,
+      "nome": "Usuários (com herança)",
+      "descricao": "Existe uma tabela \"mãe\" chamada tb_usuarios com os dados em comum, e cada usuário se encaixa em um dos 3 \"filhos\": tb_sindicos, tb_moradores ou tb_cooperativas.",
+      "qtd_tabelas_texto": "4 tabelas",
+      "tabelas": [
+        {
+          "nome": "tb_usuarios",
+          "tipo": "Entidade (mãe)",
+          "descricao_curta": "Tabela mãe da herança: dados comuns a todos os usuários.",
+          "descricao": "É a tabela mãe: guarda nome, e-mail, a senha já em hash, data de nascimento, CPF (11 dígitos), foto de perfil (URL), se a conta está ativa, quando foi feito o cadastro, o tipo de usuário e o endereço — os dois últimos agora são obrigatórios (NOT NULL) no script novo.",
+          "permissoes": [
+            {
+              "perfil": "Usuário",
+              "badge": "R*",
+              "detalhe": "só o próprio"
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R*",
+              "detalhe": "só o próprio"
+            },
+            {
+              "perfil": "Morador",
+              "badge": "R*",
+              "detalhe": "só o próprio"
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R*",
+              "detalhe": "só o próprio"
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "R",
+              "detalhe": "no momento do login/autenticação"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "CPF é único (UNIQUE) quando preenchido.",
+            "endereco_id e tipo_usuario_id agora são obrigatórios — todo usuário precisa ter um endereço e um tipo vinculados desde a criação.",
+            "Se a conta for desativada, é só marcar ativo=false (exclusão lógica); a exclusão física arrasta o subtipo (síndico, morador ou cooperativa) junto."
+          ],
+          "observacoes": [
+            "Diferente da versão anterior, email_usuario não tem UNIQUE explícito neste script — confirmar se é intencional ou se falta o constraint.",
+            "O campo antes chamado \"CPF/CNPJ\" virou só \"cpf\" — o CNPJ da cooperativa agora mora em tb_cooperativas.cnpj_cooperativa.",
+            "Senha sempre armazenada em hash, nunca em texto puro."
+          ]
+        },
+        {
+          "nome": "tb_sindicos",
+          "tipo": "Entidade (filha)",
+          "descricao_curta": "Subtipo do síndico, vinculado a um usuário.",
+          "descricao": "É o subtipo do síndico (a diferença entre residencial e comercial ainda vem do tipo do condomínio que ele administra, não dessa tabela). Só guarda a referência pro usuário.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "R*",
+              "detalhe": "só o próprio"
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "R",
+              "detalhe": "dentro de procedure"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Um usuário só pode virar síndico uma vez (UNIQUE em usuario_id)."
+          ],
+          "observacoes": [
+            "O script não tem UNIQUE em tb_condominios.sindico_id — nada no banco impede o mesmo síndico de administrar mais de um condomínio; se a regra \"1 síndico por condomínio\" ainda vale, ela está só na aplicação."
+          ]
+        },
+        {
+          "nome": "tb_moradores",
+          "tipo": "Entidade (filha)",
+          "descricao_curta": "Subtipo do morador, vinculado a um usuário e a um condomínio.",
+          "descricao": "É o subtipo do morador. No script novo essa tabela ficou bem mais enxuta: só guarda a referência pro usuário (única) e o condomínio.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "R*",
+              "detalhe": "só o próprio"
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": "do seu condomínio"
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Um usuário só pode ser morador uma vez (UNIQUE em usuario_id)."
+          ],
+          "observacoes": [
+            "Os campos de unidade e de cache de pontuação que existiam antes não estão mais aqui — confirmar se \"unidade\" (apartamento/sala) ainda existe em algum lugar do modelo ou se foi mesmo descontinuada."
+          ]
+        },
+        {
+          "nome": "tb_cooperativas",
+          "tipo": "Entidade (filha)",
+          "descricao_curta": "Subtipo da cooperativa, com CNPJ e conta de usuário opcional.",
+          "descricao": "É o subtipo da cooperativa: CNPJ, nome, e-mail e telefone de contato, data de cadastro, endereço próprio (1 pra 1) e uma referência opcional pra conta de usuário.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": "só o contato"
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "RW*",
+              "detalhe": "restrito ao próprio"
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "R",
+              "detalhe": "dentro de procedure"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [],
+          "observacoes": [
+            "usuario_id agora é opcional (nullable, mas único quando preenchido) — antes toda cooperativa parecia depender de ter conta de usuário vinculada; confirmar se cooperativa sem conta é um cenário válido.",
+            "cnpj_cooperativa não tem UNIQUE explícito neste script — confirmar se é intencional."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "contato",
+      "numero": 3,
+      "nome": "Contato e Comunicação",
+      "descricao": "Tabelas que guardam os meios de contato dos usuários e as notificações geradas pelo sistema.",
+      "qtd_tabelas_texto": "2 tabelas",
+      "tabelas": [
+        {
+          "nome": "tb_telefones",
+          "tipo": "Entidade",
+          "descricao_curta": "Vários números de telefone por usuário.",
+          "descricao": "Vários números de telefone por usuário, cada um com um tipo (celular, fixo ou whatsapp) e uma flag de ativo.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "RW*",
+              "detalhe": "só dos próprios"
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "RW*",
+              "detalhe": "só dos próprios"
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Se excluir o usuário, todos os telefones dele saem junto (FK)."
+          ],
+          "observacoes": []
+        },
+        {
+          "nome": "tb_notificacoes",
+          "tipo": "Entidade",
+          "descricao_curta": "Notificações recebidas pelo usuário, geradas automaticamente.",
+          "descricao": "São as notificações que o usuário recebe — título, corpo, tipo e data de envio — geradas automaticamente pelo sistema.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "R*",
+              "detalhe": "só as próprias"
+            },
+            {
+              "perfil": "Morador",
+              "badge": "R*",
+              "detalhe": "só as próprias"
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R*",
+              "detalhe": "só as próprias"
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "dentro de procedure"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "R",
+              "detalhe": null
+            }
+          ],
+          "regras": [],
+          "observacoes": [
+            "O campo de leitura/data de leitura que existia antes não está mais nessa tabela no script novo — se o app ainda precisa marcar notificação como lida, isso precisa ser adicionado ou já foi resolvido de outra forma (ex.: no client)."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "condominio",
+      "numero": 4,
+      "nome": "Condomínio e Estrutura",
+      "descricao": "A entidade central do sistema e sua estrutura física em torres.",
+      "qtd_tabelas_texto": "2 tabelas",
+      "tabelas": [
+        {
+          "nome": "tb_condominios",
+          "tipo": "Entidade central",
+          "descricao_curta": "Entidade central do sistema: junta torres, moradores e agendamentos.",
+          "descricao": "É a entidade central do sistema — junta torres, moradores e os agendamentos de coleta. Tem um código de acesso único (codigo_acesso), gerado no cadastro e distribuído pro morador usar quando for se cadastrar.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "R*",
+              "detalhe": "o próprio condomínio"
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "RW*",
+              "detalhe": "restrito ao próprio condomínio"
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R*",
+              "detalhe": "os condomínios que já têm agendamento marcado"
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Se excluir o condomínio, vai em cascata (via FK) e leva torres e agendamentos vinculados."
+          ],
+          "observacoes": [
+            "sindico_id agora é opcional (nullable) — antes a regra era \"todo condomínio tem síndico vinculado obrigatoriamente\"; confirmar se um condomínio sem síndico é um estado válido (ex.: recém-cadastrado, aguardando aprovação) ou se falta um NOT NULL.",
+            "A tabela de unidades não existe mais — confirmar se apartamentos/salas deixaram de ser modelados ou se moram em outro lugar do sistema."
+          ]
+        },
+        {
+          "nome": "tb_torres",
+          "tipo": "Entidade",
+          "descricao_curta": "Blocos/torres dentro de um condomínio.",
+          "descricao": "São os blocos/torres dentro de um condomínio. O nome da torre só precisa ser único dentro do mesmo condomínio (UNIQUE composto).",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "RW*",
+              "detalhe": "restrito ao próprio condomínio"
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [],
+          "observacoes": []
+        }
+      ]
+    },
+    {
+      "id": "pontos-coleta",
+      "numero": 5,
+      "nome": "Pontos de Coleta",
+      "descricao": "Pontos físicos de coleta de recicláveis e os materiais que cada um aceita.",
+      "qtd_tabelas_texto": "3 tabelas",
+      "tabelas": [
+        {
+          "nome": "tb_pontos_coletas",
+          "tipo": "Entidade",
+          "descricao_curta": "Pontos físicos de coleta, geridos pela cooperativa, exibidos no mapa.",
+          "descricao": "São os pontos físicos de coleta de recicláveis, geridos pela cooperativa, que aparecem no mapa do app com horário de funcionamento.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": "pro mapa"
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "RW*",
+              "detalhe": "restrito aos próprios pontos"
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "O ponto pode existir mesmo sem cooperativa vinculada."
+          ],
+          "observacoes": []
+        },
+        {
+          "nome": "tb_rel_cooperativas_categorias_materiais",
+          "tipo": "Associativa",
+          "descricao_curta": "Ligação entre cooperativa e categoria de resíduo aceita.",
+          "descricao": "É a ligação entre cooperativa e categoria de resíduo, mostrando quais materiais cada cooperativa aceita coletar.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "RW*",
+              "detalhe": "restrito ao próprio"
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Não pode duplicar a mesma combinação de cooperativa + categoria (UNIQUE composto)."
+          ],
+          "observacoes": []
+        },
+        {
+          "nome": "tb_rel_pontos_coletas_categorias",
+          "tipo": "Associativa",
+          "descricao_curta": "Ligação entre ponto de coleta físico e categoria de resíduo.",
+          "descricao": "É a ligação entre o ponto de coleta físico e a categoria de resíduo, mostrando quais materiais aquele ponto específico aceita.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": "pra filtrar no mapa"
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "RW*",
+              "detalhe": "restrito aos próprios"
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Não pode duplicar a mesma combinação de ponto + categoria (UNIQUE composto)."
+          ],
+          "observacoes": []
+        }
+      ]
+    },
+    {
+      "id": "moderacao",
+      "numero": 6,
+      "nome": "Moderação e Confiança",
+      "descricao": "O sistema de confiança que pesa os votos da comunidade sobre as postagens: quanto mais confiável o morador, mais peso o voto dele tem.",
+      "qtd_tabelas_texto": "3 tabelas",
+      "tabelas": [
+        {
+          "nome": "tb_lkp_niveis_confianca",
+          "tipo": "Lookup",
+          "descricao_curta": "Os três níveis de confiança de um morador, cada um com um peso de voto.",
+          "descricao": "Lookup com os três níveis de confiança (morador_comum, pessoa_confiavel, sindico, conforme o comentário do schema), cada um com um peso de voto (peso_voto) usado na moderação de postagens — por padrão 1, 3 e 3, respectivamente.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "R",
+              "detalhe": "dentro das procedures de voto e trust score"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "peso_voto precisa ser maior que zero (CHECK)."
+          ],
+          "observacoes": [
+            "Tabela nova, agrupada aqui junto do sistema de confiança/votação mesmo sendo tecnicamente uma lookup — a revisar se deveria ficar no grupo de Domínio/Lookup em vez daqui."
+          ]
+        },
+        {
+          "nome": "tb_rel_usuarios_condominios",
+          "tipo": "Associativa",
+          "descricao_curta": "Vínculo entre usuário e condomínio, agora com trust score e histórico de denúncias.",
+          "descricao": "É o vínculo entre um usuário e um condomínio, com fluxo de aprovação (como antes), mas agora carregando todo o sistema de confiança: nível de confiança atual (default morador_comum), trust_score calculado pela function fn_calcular_trust_score, e os contadores que alimentam esse cálculo — postagens validadas sem contestação, denúncias realizadas, denúncias procedentes e a taxa de acerto. A procedure sp_atualizar_trust_score recalcula tudo isso e promove o usuário a \"pessoa_confiavel\" quando o trust_score passa de 200.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "R*",
+              "detalhe": "só o próprio vínculo"
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": "e aprova o vínculo (é ele quem aceita o morador entrar no condomínio)"
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "via sp_atualizar_trust_score e trigger de auditoria"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Todo vínculo novo nasce como não aprovado (aprovado=false) até o síndico aprovar manualmente.",
+            "Um usuário não pode ter dois vínculos com o mesmo condomínio (UNIQUE em usuario_id + condominio_id).",
+            "denuncias_procedentes nunca pode passar de denuncias_realizadas (CHECK).",
+            "taxa_acerto_denuncias, quando preenchida, fica entre 0 e 100 (CHECK).",
+            "Promoção automática a \"pessoa_confiavel\" acontece quando trust_score >= 200 (constante fixada dentro de sp_atualizar_trust_score)."
+          ],
+          "observacoes": [
+            "Esse vínculo agora é auditado por trigger (tb_log_auditoria_usuarios_condominios) — toda mudança em aprovado ou data_saida fica registrada."
+          ]
+        },
+        {
+          "nome": "tb_rel_votos_postagens",
+          "tipo": "Associativa",
+          "descricao_curta": "Cada voto (aprovar/denunciar) que um morador dá numa postagem.",
+          "descricao": "Registra o voto de um morador sobre uma postagem — aprovar ou denunciar — com o peso aplicado (peso_aplicado, um snapshot do peso do nível de confiança do votante no momento do voto, não o peso atual). Todo o fluxo de inserir o voto, atualizar o saldo_confianca da postagem e resolver o status quando bate o limiar é feito dentro da procedure sp_processar_voto_postagem, com FOR UPDATE pra evitar corrida entre votos simultâneos.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "RW*",
+              "detalhe": "só os próprios votos, e só via a procedure de voto"
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "dentro de sp_processar_voto_postagem"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Um usuário só pode votar uma vez em cada postagem (UNIQUE em postagem_id + usuario_id).",
+            "peso_aplicado precisa ser maior que zero (CHECK).",
+            "motivo_denuncia_id é obrigatório quando o voto é do tipo \"denunciar\" (validado na procedure).",
+            "Postagem já resolvida (resolvido_em preenchido) não aceita novos votos (validado na procedure)."
+          ],
+          "observacoes": []
+        }
+      ]
+    },
+    {
+      "id": "postagens",
+      "numero": 7,
+      "nome": "Postagens",
+      "descricao": "Registro de descarte de reciclável enviado pelo morador, com moderação comunitária por votação.",
+      "qtd_tabelas_texto": "1 tabela",
+      "tabelas": [
+        {
+          "nome": "tb_postagens",
+          "tipo": "Entidade",
+          "descricao_curta": "Registro de descarte enviado pelo morador, moderado pela comunidade.",
+          "descricao": "É o registro de descarte de reciclável que o morador envia com foto. A postagem nasce com status \"aprovada\" (id 1, por default) e traz um hash da foto (hash_foto) que impede reenviar a mesma imagem em outra postagem. Existe uma checagem automática fraca (triagem_automatica_aprovada/confianca) que roda antes da moderação da comunidade, um prazo de 24h pra comunidade validar ou derrubar a postagem (data_limite_analise), e um saldo_confianca que sobe com aprovações e desce com denúncias — ver tb_rel_votos_postagens e a procedure sp_processar_voto_postagem.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "RW*",
+              "detalhe": "só das próprias"
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": "e também pode votar, com peso maior"
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "triagem automática e via sp_processar_voto_postagem"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "hash_foto é único (UNIQUE) — impede reenviar a mesma foto em outra postagem.",
+            "capturada_em precisa ser antes ou igual a data_postagem (CHECK).",
+            "triagem_automatica_confianca, quando preenchida, fica entre 0 e 100 (CHECK).",
+            "data_limite_analise tem 24h de prazo por default a partir do momento da postagem.",
+            "resolvido_em só é preenchido quando o saldo_confianca atinge o limiar de aprovação (+5) ou reprovação (-5), dentro da procedure de voto."
+          ],
+          "observacoes": [
+            "O status inicial mudou de \"pendente\" (moderação só do síndico) pra \"aprovada\" por default (moderação comunitária por voto) — é uma mudança de modelo de negócio, não só de nome de tabela; vale confirmar se é essa mesmo a intenção."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agendamentos",
+      "numero": 8,
+      "nome": "Agendamentos e Coleta",
+      "descricao": "Agendamento de coletas entre condomínio e cooperativa, visitas, avaliações e recorrência.",
+      "qtd_tabelas_texto": "4 tabelas",
+      "tabelas": [
+        {
+          "nome": "tb_agendamentos_coletas",
+          "tipo": "Entidade",
+          "descricao_curta": "Agendamento de coleta entre um condomínio e uma cooperativa.",
+          "descricao": "É o agendamento de coleta entre um condomínio e uma cooperativa, com data de início, data de fim opcional e uma flag de recorrência (possui_recorrencia).",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "RW*",
+              "detalhe": "restrito ao próprio condomínio"
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": "e confirma a presença"
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "via trigger de auditoria"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "data_fim, quando preenchida, precisa ser igual ou depois de data_inicio (CHECK)."
+          ],
+          "observacoes": [
+            "O script novo não tem uma trigger atualizando possui_recorrencia automaticamente quando entra/sai um dia em tb_rel_recorrencias_agendamentos — se esse cache ainda deveria ser automático, falta implementar; por ora quem grava esse campo precisa ser a aplicação."
+          ]
+        },
+        {
+          "nome": "tb_visitas_coletas",
+          "tipo": "Entidade",
+          "descricao_curta": "Registro de cada passagem da cooperativa dentro de um agendamento.",
+          "descricao": "É o registro de cada passagem (visita) da cooperativa dentro de um agendamento — se foi realizada, se houve confirmação, quando confirmou e uma observação livre.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "RW*",
+              "detalhe": "na parte de confirmação"
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [],
+          "observacoes": [
+            "O script novo não define uma procedure própria de confirmação de visita — se antes existia essa lógica encapsulada, aqui parece ficar como INSERT/UPDATE direto na tabela; confirmar se ainda é necessário criar essa procedure."
+          ]
+        },
+        {
+          "nome": "tb_avaliacoes_visitas_coletas",
+          "tipo": "Entidade",
+          "descricao_curta": "Avaliação de 1 a 5 estrelas dada pelo condomínio à visita da cooperativa.",
+          "descricao": "É a avaliação de 1 a 5 estrelas que o condomínio dá pra passagem (ou não passagem) da cooperativa. Só pode ter uma avaliação por visita.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "RW*",
+              "detalhe": "restrito ao próprio condomínio (é ele quem avalia)"
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R*",
+              "detalhe": "as próprias avaliações recebidas"
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "R",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "A nota só pode ser um número inteiro entre 1 e 5 (CHECK).",
+            "Só pode existir uma avaliação por visita (UNIQUE em visita_coleta_id)."
+          ],
+          "observacoes": []
+        },
+        {
+          "nome": "tb_rel_recorrencias_agendamentos",
+          "tipo": "Associativa",
+          "descricao_curta": "Define em quais dias da semana um agendamento se repete.",
+          "descricao": "Define em quais dias da semana um agendamento se repete.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "RW*",
+              "detalhe": "restrito ao próprio"
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Não pode repetir o mesmo dia da semana duas vezes no mesmo agendamento (UNIQUE composto)."
+          ],
+          "observacoes": [
+            "Diferente da versão anterior, o script novo não define uma trigger que atualiza o cache de recorrência no agendamento — ver observação em tb_agendamentos_coletas."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "educacao",
+      "numero": 9,
+      "nome": "Educação",
+      "descricao": "Cursos de educação ambiental, aulas, quizzes com pontuação e o progresso de cada usuário.",
+      "qtd_tabelas_texto": "8 tabelas",
+      "tabelas": [
+        {
+          "nome": "tb_cursos",
+          "tipo": "Entidade",
+          "descricao_curta": "Cursos de educação ambiental e reciclagem.",
+          "descricao": "São os cursos de educação ambiental e reciclagem, acessíveis a todos os perfis.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Curso inativo (esta_ativo=false) não deve aparecer pra usuário comum.",
+            "Se excluir o curso, exclui as aulas dele em cascata (FK)."
+          ],
+          "observacoes": []
+        },
+        {
+          "nome": "tb_aulas",
+          "tipo": "Entidade",
+          "descricao_curta": "Unidades sequenciais dentro de um curso.",
+          "descricao": "São as unidades dentro de um curso, em ordem sequencial.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "A ordem da aula dentro do curso precisa ser única (UNIQUE em curso_id + ordem)."
+          ],
+          "observacoes": [
+            "Diferente da versão anterior, concluir uma aula (tb_rel_usuarios_cursos) não dispara nenhuma trigger de pontuação neste script — ver observação em tb_rel_usuarios_cursos."
+          ]
+        },
+        {
+          "nome": "tb_quizzes",
+          "tipo": "Entidade",
+          "descricao_curta": "O quiz de uma aula, com nota mínima e pontos de recompensa.",
+          "descricao": "Cada aula pode ter um quiz (relação 1 pra 1, UNIQUE em aula_id), com nota mínima de aprovação (default 70) e pontos de recompensa. O comentário do schema documenta como regra que pontos_recompensa deve ser maior que o pontos_base de uma postagem comum.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "nota_minima_aprovacao fica entre 0 e 100 (CHECK).",
+            "pontos_recompensa precisa ser maior que zero (CHECK).",
+            "Um quiz pertence a exatamente uma aula (UNIQUE em aula_id)."
+          ],
+          "observacoes": [
+            "Tabela nova — permissões rascunhadas com base no padrão de tb_cursos/tb_aulas, a revisar."
+          ]
+        },
+        {
+          "nome": "tb_perguntas_quiz",
+          "tipo": "Entidade",
+          "descricao_curta": "As perguntas de um quiz, em ordem.",
+          "descricao": "Perguntas de um quiz, cada uma com um enunciado e uma ordem de exibição.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "A ordem da pergunta dentro do quiz precisa ser única (UNIQUE em quiz_id + ordem)."
+          ],
+          "observacoes": [
+            "Tabela nova — permissões rascunhadas por analogia, a revisar."
+          ]
+        },
+        {
+          "nome": "tb_alternativas_quiz",
+          "tipo": "Entidade",
+          "descricao_curta": "As alternativas de cada pergunta, com a correta marcada.",
+          "descricao": "As alternativas de resposta de cada pergunta, com uma flag indicando qual é a correta (correta, default false).",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "R",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [],
+          "observacoes": [
+            "O script não tem um CHECK garantindo que cada pergunta tenha pelo menos uma alternativa marcada como correta — confirmar se isso é validado só na aplicação."
+          ]
+        },
+        {
+          "nome": "tb_tentativas_quiz",
+          "tipo": "Entidade",
+          "descricao_curta": "Cada tentativa de um usuário num quiz, com nota e aprovação.",
+          "descricao": "Registra cada tentativa de um usuário num quiz — nota, se foi aprovado, quando começou e quando concluiu. Guarda também um \"snapshot\" do condomínio e da torre do usuário no momento da conclusão, pra poder atribuir os pontos ao ciclo certo mesmo que o usuário troque de condomínio depois. Segundo o comentário do schema, quando aprovado=true a aplicação deveria incrementar os pontos no Redis.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "RW*",
+              "detalhe": "só as próprias tentativas"
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": "do seu condomínio"
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "R",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "nota, quando preenchida, fica entre 0 e 100 (CHECK)."
+          ],
+          "observacoes": [
+            "A concessão de pontos por aprovação no quiz é responsabilidade da aplicação/Redis — não existe trigger no banco fazendo isso neste script."
+          ]
+        },
+        {
+          "nome": "tb_rel_respostas_tentativas_quiz",
+          "tipo": "Associativa",
+          "descricao_curta": "A resposta escolhida pelo usuário em cada pergunta de uma tentativa.",
+          "descricao": "Guarda qual alternativa o usuário escolheu em cada pergunta de uma tentativa de quiz, e se essa resposta estava correta.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "R*",
+              "detalhe": "só as próprias"
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "R",
+              "detalhe": "do seu condomínio"
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "R",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Uma tentativa só pode ter uma resposta por pergunta (UNIQUE em tentativa_id + pergunta_id)."
+          ],
+          "observacoes": [
+            "Tabela nova — permissões rascunhadas com base no padrão de tb_tentativas_quiz, a revisar."
+          ]
+        },
+        {
+          "nome": "tb_rel_usuarios_cursos",
+          "tipo": "Associativa",
+          "descricao_curta": "Progresso de cada usuário em cada aula.",
+          "descricao": "É o progresso de cada usuário em cada aula — se concluiu, quando começou e quando concluiu.",
+          "permissoes": [
+            {
+              "perfil": "Morador",
+              "badge": "RW*",
+              "detalhe": "restrito ao próprio"
+            },
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "RW*",
+              "detalhe": "restrito ao próprio"
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "DBA",
+              "badge": "R",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Um usuário só registra progresso uma vez por aula (UNIQUE em usuario_id + aula_id)."
+          ],
+          "observacoes": [
+            "A trigger que antes dava pontos automaticamente ao concluir uma aula não aparece neste script — confirmar se essa lógica ainda existe (na aplicação, talvez) ou se foi descontinuada."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "auditoria",
+      "numero": 10,
+      "nome": "Auditoria",
+      "descricao": "Log de auditoria com herança de classe: uma tabela mãe genérica e um subtipo pra cada processo sensível.",
+      "qtd_tabelas_texto": "4 tabelas",
+      "tabelas": [
+        {
+          "nome": "tb_log_auditoria",
+          "tipo": "Log",
+          "descricao_curta": "Log mãe da auditoria: quem, quando e em qual tabela.",
+          "descricao": "É a tabela mãe da herança de auditoria — guarda o discriminador do evento (tipo_evento_auditado_id), o tipo de operação (INSERT/UPDATE/DELETE), quem executou (executado_por, via CURRENT_USER) e quando. Os detalhes de \"antes e depois\" ficam nos subtipos: tb_log_auditoria_postagens, tb_log_auditoria_agendamentos_coletas e tb_log_auditoria_usuarios_condominios.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "via trigger"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "R",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Esse log é imutável — não deve ser editado nem excluído manualmente."
+          ],
+          "observacoes": [
+            "Diferente da versão anterior (que guardava um JSON genérico de \"antes e depois\"), agora cada processo auditado tem sua própria tabela de subtipo com colunas tipadas — mais rígido, mas também significa que só postagens, agendamentos de coleta e o vínculo usuário-condomínio são auditados; qualquer outra tabela sensível nova precisaria de um subtipo próprio."
+          ]
+        },
+        {
+          "nome": "tb_log_auditoria_postagens",
+          "tipo": "Log",
+          "descricao_curta": "Detalhe de auditoria de uma postagem: status e saldo de confiança antes/depois.",
+          "descricao": "Subtipo 1:1 de tb_log_auditoria (populado pela trigger trg_auditoria_postagens) com o status de validação e o saldo_confianca da postagem antes e depois da operação.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "via trigger trg_auditoria_postagens"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "R",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Vínculo 1:1 com tb_log_auditoria (UNIQUE em auditoria_id)."
+          ],
+          "observacoes": [
+            "Tabela nova (subtipo) — mesmo padrão de acesso de tb_log_auditoria."
+          ]
+        },
+        {
+          "nome": "tb_log_auditoria_agendamentos_coletas",
+          "tipo": "Log",
+          "descricao_curta": "Detalhe de auditoria de um agendamento: status e datas antes/depois.",
+          "descricao": "Subtipo 1:1 de tb_log_auditoria (populado pela trigger trg_auditoria_agendamentos_coletas) com status, data_inicio e data_fim do agendamento antes e depois da operação.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "via trigger trg_auditoria_agendamentos_coletas"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "R",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Vínculo 1:1 com tb_log_auditoria (UNIQUE em auditoria_id)."
+          ],
+          "observacoes": [
+            "Tabela nova (subtipo) — mesmo padrão de acesso de tb_log_auditoria."
+          ]
+        },
+        {
+          "nome": "tb_log_auditoria_usuarios_condominios",
+          "tipo": "Log",
+          "descricao_curta": "Detalhe de auditoria do vínculo usuário-condomínio: aprovação e saída antes/depois.",
+          "descricao": "Subtipo 1:1 de tb_log_auditoria (populado pela trigger trg_auditoria_usuarios_condominios) com o campo aprovado e a data_saida antes e depois da operação.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "via trigger trg_auditoria_usuarios_condominios"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "R",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Vínculo 1:1 com tb_log_auditoria (UNIQUE em auditoria_id)."
+          ],
+          "observacoes": [
+            "Tabela nova (subtipo) — mesmo padrão de acesso de tb_log_auditoria."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "datamart",
+      "numero": 11,
+      "nome": "Data Mart (Star Schema)",
+      "descricao": "Camada física dimensional (dimensões + fatos) pra ferramentas de BI, alimentada por ETL full-refresh a partir do banco operacional. É um schema derivado — não substitui o OLTP, e não deveria receber escrita direta da aplicação.",
+      "qtd_tabelas_texto": "9 tabelas",
+      "tabelas": [
+        {
+          "nome": "dim_tempo",
+          "tipo": "Dimensão",
+          "descricao_curta": "Dimensão de tempo compartilhada por todos os fatos.",
+          "descricao": "Dimensão conformada de calendário — chave substituta no formato AAAAMMDD (inteiro), o que permite filtrar e cruzar por data sem lookup prévio. Cobre do menor ao maior evento do OLTP, com folga de 30 dias pra trás e pra frente.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "via sp_carga_datamart (TRUNCATE/DELETE + reload completo)"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "Repovoada do zero a cada carga — nunca deve ser editada manualmente."
+          ],
+          "observacoes": [
+            "Camada de BI: pensada pra quem consome relatórios/dashboards (Power BI, Metabase, Looker) com credencial própria de leitura, não pros perfis de negócio do app — rascunho de permissões a revisar com quem for operar o BI."
+          ]
+        },
+        {
+          "nome": "dim_usuario",
+          "tipo": "Dimensão",
+          "descricao_curta": "Snapshot atual dos usuários (SCD tipo 1, sem histórico).",
+          "descricao": "Cópia achatada de tb_usuarios pro Data Mart — nome, e-mail, tipo de usuário e se está ativo. É SCD Tipo 1: cada carga sobrescreve o snapshot anterior, não guarda histórico de mudanças.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "via sp_carga_datamart"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "id_usuario é a chave natural, única, usada como rastro de volta pro OLTP."
+          ],
+          "observacoes": []
+        },
+        {
+          "nome": "dim_condominio",
+          "tipo": "Dimensão",
+          "descricao_curta": "Snapshot dos condomínios, com cidade/estado do endereço.",
+          "descricao": "Cópia achatada de tb_condominios (mais tipo e endereço via JOIN) pro Data Mart.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "via sp_carga_datamart"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [],
+          "observacoes": []
+        },
+        {
+          "nome": "dim_cooperativa",
+          "tipo": "Dimensão",
+          "descricao_curta": "Snapshot das cooperativas; \"ativo\" vem da conta de usuário vinculada.",
+          "descricao": "Cópia achatada de tb_cooperativas. Cooperativa não tem flag própria de ativo/inativo — o campo \"ativo\" aqui vem de tb_usuarios.ativo, através de tb_cooperativas.usuario_id.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "via sp_carga_datamart"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [],
+          "observacoes": [
+            "Se uma cooperativa não tiver usuario_id preenchido (agora é opcional no OLTP), o campo ativo chega NULL aqui."
+          ]
+        },
+        {
+          "nome": "dim_categoria_residuo",
+          "tipo": "Dimensão",
+          "descricao_curta": "Snapshot das categorias de resíduo, com pontos e cor pro dashboard.",
+          "descricao": "Cópia de tb_lkp_categorias_residuos, incluindo pontos_base (pra compor a métrica de pontos em fato_postagens) e cor_identificacao (pra colorir gráficos por categoria).",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "via sp_carga_datamart"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [],
+          "observacoes": []
+        },
+        {
+          "nome": "dim_status_postagem",
+          "tipo": "Dimensão",
+          "descricao_curta": "Snapshot dos status de validação de postagem.",
+          "descricao": "Cópia conformada de tb_lkp_status_validacoes_postagens — acompanha automaticamente qualquer novo status cadastrado no OLTP.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "via sp_carga_datamart"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [],
+          "observacoes": []
+        },
+        {
+          "nome": "dim_status_agendamento",
+          "tipo": "Dimensão",
+          "descricao_curta": "Snapshot dos status de agendamento de coleta.",
+          "descricao": "Cópia conformada de tb_lkp_status_agendamentos.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "via sp_carga_datamart"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [],
+          "observacoes": []
+        },
+        {
+          "nome": "fato_postagens",
+          "tipo": "Fato",
+          "descricao_curta": "Fato: 1 linha por postagem de reciclagem.",
+          "descricao": "Grão de 1 linha por postagem, ligando tempo, usuário, condomínio, categoria e status. A métrica pontos_gerados replica a regra do OLTP: pontos_base da categoria quando a postagem está aprovada, 0 caso contrário.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "via sp_carga_datamart"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "id_postagem é chave degenerada, única (UNIQUE) — rastreabilidade direta com tb_postagens.",
+            "sk_usuario é obrigatório (NOT NULL); sk_condominio, sk_categoria e sk_tempo podem ficar NULL quando a informação de origem também for."
+          ],
+          "observacoes": [
+            "Índices em sk_tempo e sk_condominio dão suporte aos filtros mais comuns de dashboard."
+          ]
+        },
+        {
+          "nome": "fato_coletas",
+          "tipo": "Fato",
+          "descricao_curta": "Fato: 1 linha por visita de coleta agendada.",
+          "descricao": "Grão de 1 linha por visita (tb_visitas_coletas), ligando tempo, condomínio, cooperativa e status do agendamento, com as flags foi_realizada e houve_confirmacao.",
+          "permissoes": [
+            {
+              "perfil": "Síndico",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Morador",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Cooperativa",
+              "badge": "0",
+              "detalhe": null
+            },
+            {
+              "perfil": "Sistema",
+              "badge": "W",
+              "detalhe": "via sp_carga_datamart"
+            },
+            {
+              "perfil": "DBA",
+              "badge": "RW",
+              "detalhe": null
+            }
+          ],
+          "regras": [
+            "id_visita_coleta é chave degenerada, única (UNIQUE)."
+          ],
+          "observacoes": []
+        }
+      ]
+    }
+  ]
+}
