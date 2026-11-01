@@ -1,0 +1,924 @@
+/* Documentos EcoCiente · página paisagem 1100×850 · design do relatório de observabilidade · sem animações, sem scripts */
+@font-face {
+  font-family: "Nunito";
+  src: url("fontes/nunito-latin-wght-normal.woff2") format("woff2");
+  font-weight: 200 1000;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("fontes/plus-jakarta-sans-latin-wght-normal.woff2") format("woff2");
+  font-weight: 200 800;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("fontes/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 800;
+}
+@font-face {
+  font-family: "Bebas Neue";
+  src: url("fontes/bebas-neue-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+}
+
+:root {
+  --salvia: #a7b7aa;
+  --floresta: #2e5c41;
+  --verde: #064e3b;
+  --petroleo: #1d464d;
+  --azul: #205867;
+  --framboesa: #b93c63;
+  --rosa: #d64573;
+  --tinta: #0f1723;
+  --creme: #f8f4f0;
+  --topo: #f3f0ea;
+  --marca: #cadccf;
+  --cinza: #5f6b65;
+  --linha: #d5dbd5;
+}
+
+@page {
+  size: 1100px 850px;
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  font-variant-ligatures: none;
+  font-feature-settings: "calt" 0;
+}
+
+html,
+body {
+  margin: 0;
+  background: #fff;
+}
+
+body {
+  color: var(--tinta);
+  font: 500 12.5px/18px "Plus Jakarta Sans", system-ui, sans-serif;
+}
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol {
+  margin: 0;
+}
+
+.pg {
+  position: relative;
+  width: 1100px;
+  height: 850px;
+  overflow: hidden;
+  background: #fff;
+  break-after: page;
+}
+
+.pg:last-child {
+  break-after: auto;
+}
+
+.a {
+  position: absolute;
+}
+
+.v {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-weight: 600;
+  font-size: 0.92em;
+}
+
+/* ───── cabeçalho e número de página ───── */
+.run {
+  position: absolute;
+  left: 60px;
+  top: 24px;
+  font-size: 11px;
+  color: #7c8780;
+}
+
+.num {
+  position: absolute;
+  right: 60px;
+  bottom: 26px;
+  font: 500 11px "JetBrains Mono", monospace;
+  color: #7c8780;
+}
+
+.escura .run,
+.escura .num {
+  color: var(--salvia);
+}
+
+/* ───── colunas e linhas ───── */
+.c1 {
+  left: 60px;
+  width: 300px;
+}
+
+.c2 {
+  left: 397px;
+  width: 306px;
+}
+
+.c3 {
+  left: 733px;
+  width: 307px;
+}
+
+.c23 {
+  left: 397px;
+  width: 643px;
+}
+
+.l1 {
+  top: 140px;
+}
+
+.l2 {
+  top: 490px;
+}
+
+.topo {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 703px;
+  height: 440px;
+  background: var(--topo);
+}
+
+.topo.cheio {
+  width: 1100px;
+}
+
+/* ───── tipografia ───── */
+h2 {
+  font: 800 26px/30px "Nunito", sans-serif;
+  letter-spacing: -0.02em;
+  color: var(--tinta);
+}
+
+.sub {
+  margin-top: 12px;
+  font: 600 17px/25px "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -0.01em;
+}
+
+.m {
+  background: var(--marca);
+  padding: 1px 4px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.corpo p + p {
+  margin-top: 12px;
+}
+
+.corpo strong {
+  font-weight: 800;
+}
+
+.grande {
+  font: 400 64px/60px "Bebas Neue", Impact, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.005em;
+}
+
+/* ───── etiquetas de origem ───── */
+.tag {
+  display: inline-block;
+  font: 800 8.5px/1 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.06em;
+  padding: 3px 6px 3px;
+  border-radius: 3px;
+  border: 1px solid var(--cinza);
+  color: var(--cinza);
+  background: #fff;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+
+.tag--medido {
+  background: var(--verde);
+  border-color: var(--verde);
+  color: var(--creme);
+}
+
+.tag--estimado {
+  border-color: var(--azul);
+  color: var(--azul);
+}
+
+.tag--premissa {
+  border-style: dashed;
+}
+
+.tag--amedir {
+  background: var(--framboesa);
+  border-color: var(--framboesa);
+  color: var(--creme);
+}
+
+/* ───── cartão de número ───── */
+.stat {
+  position: absolute;
+  left: 397px;
+  top: 147px;
+  width: 306px;
+  height: 293px;
+  padding: 22px 24px;
+  border-radius: 14px 14px 0 0;
+  color: var(--creme);
+}
+
+.g-rosa {
+  background: linear-gradient(165deg, #d64573 0%, #b93c63 55%, #7d2a55 100%);
+}
+
+.g-verde {
+  background: linear-gradient(165deg, #2e5c41 0%, #1d464d 60%, #205867 100%);
+}
+
+.g-azul {
+  background: linear-gradient(165deg, #205867 0%, #1d464d 55%, #064e3b 100%);
+}
+
+.stat .rot {
+  font: 700 12px/16px "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.02em;
+  opacity: 0.92;
+}
+
+.stat .big {
+  font: 400 78px/70px "Bebas Neue", Impact, sans-serif;
+  margin-top: 16px;
+  letter-spacing: 0.005em;
+}
+
+.stat .big small {
+  font: 700 13px/1 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0;
+  margin-left: 6px;
+}
+
+.stat .cap {
+  font: 600 12px/17px "Plus Jakarta Sans", sans-serif;
+  margin-top: 6px;
+}
+
+.stat.dupla .big {
+  font-size: 66px;
+  line-height: 60px;
+}
+
+.stat .par + .par {
+  margin-top: 16px;
+}
+
+.stat .par + .par .big {
+  margin-top: 0;
+}
+
+.stat .ori {
+  position: absolute;
+  left: 24px;
+  bottom: 20px;
+}
+
+/* ───── "o que isso significa" ───── */
+.sig .rot {
+  font: 800 11px/14px "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.sig p {
+  margin-top: 9px;
+  font: 500 17px/24px "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -0.005em;
+}
+
+/* ───── tabelas ───── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  line-height: 15px;
+}
+
+th,
+td {
+  padding: 7px 8px;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--linha);
+}
+
+thead th {
+  font: 800 10px/13px "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.03em;
+  color: var(--cinza);
+  border-bottom: 1.5px solid var(--tinta);
+}
+
+thead tr:first-child th[colspan] {
+  text-align: center;
+  color: var(--tinta);
+  border-bottom: 1px solid var(--tinta);
+}
+
+thead th.sub2 {
+  font-weight: 700;
+  border-bottom: 1.5px solid var(--tinta);
+}
+
+tbody th {
+  font-weight: 700;
+}
+
+th.v,
+td.v {
+  text-align: right;
+  white-space: nowrap;
+}
+
+tr.soma th,
+tr.soma td {
+  background: rgba(6, 78, 59, 0.07);
+  border-bottom-color: var(--verde);
+}
+
+.nota {
+  margin-top: 9px;
+  font-size: 10.5px;
+  line-height: 15px;
+  color: var(--cinza);
+}
+
+.barra {
+  display: block;
+  height: 9px;
+  border-radius: 2px;
+  background: #dfe5df;
+}
+
+.barra > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--floresta), var(--azul));
+}
+
+td.bar {
+  width: 230px;
+}
+
+/* ───── cartões brancos sobre o creme ───── */
+.cartao {
+  position: absolute;
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.cartao h3 {
+  font: 800 13px/17px "Nunito", sans-serif;
+  letter-spacing: -0.01em;
+  margin-bottom: 8px;
+}
+
+.cartao table {
+  font-size: 11px;
+}
+
+.cartao th,
+.cartao td {
+  padding: 6px 6px;
+}
+
+.formula {
+  margin: 0;
+  font: 500 11px/17px "JetBrains Mono", monospace;
+  white-space: pre-wrap;
+  color: var(--tinta);
+}
+
+/* ───── listas ───── */
+.lista {
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 9px;
+}
+
+.lista li {
+  position: relative;
+  padding-left: 14px;
+}
+
+.lista li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: 6px;
+  height: 6px;
+  background: var(--framboesa);
+  transform: rotate(45deg);
+}
+
+ol.passos {
+  padding: 0;
+  list-style: none;
+  counter-reset: p;
+  display: grid;
+  gap: 11px;
+}
+
+ol.passos li {
+  position: relative;
+  padding-left: 30px;
+  counter-increment: p;
+}
+
+ol.passos li::before {
+  content: counter(p);
+  position: absolute;
+  left: 0;
+  top: -1px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--verde);
+  color: var(--creme);
+  font: 700 11px/20px "JetBrains Mono", monospace;
+  text-align: center;
+}
+
+.escura ol.passos li::before {
+  background: var(--rosa);
+}
+
+/* ───── capa ───── */
+.capa-topo {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1100px;
+  height: 330px;
+  background: var(--topo);
+}
+
+.capa-chip {
+  position: absolute;
+  left: 60px;
+  top: 66px;
+  background: #bfe3cf;
+  color: var(--verde);
+  font: 800 13px/1 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.02em;
+  padding: 9px 14px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+
+.capa-titulo {
+  position: absolute;
+  left: 60px;
+  top: 108px;
+  font: 400 104px/90px "Bebas Neue", Impact, sans-serif;
+  color: var(--verde);
+  letter-spacing: 0.002em;
+}
+
+.capa-logo {
+  position: absolute;
+  right: 60px;
+  top: 18px;
+  height: 150px;
+  width: auto;
+}
+
+.capa-meta {
+  position: absolute;
+  left: 64px;
+  top: 298px;
+  display: flex;
+  gap: 26px;
+  font: 600 11px/14px "Plus Jakarta Sans", sans-serif;
+  color: var(--cinza);
+}
+
+.capa-meta b {
+  color: var(--tinta);
+  font-weight: 800;
+}
+
+/* ───── páginas escuras com ilustração ───── */
+.escura {
+  background: var(--verde);
+}
+
+.metade-esc {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 550px;
+  height: 850px;
+  background: var(--verde);
+}
+
+.escura h2.grande,
+.escura .grande {
+  color: var(--creme);
+}
+
+.escura .lead {
+  font: 500 18px/26px "Plus Jakarta Sans", sans-serif;
+  color: var(--creme);
+}
+
+.vidro {
+  position: absolute;
+  background: rgba(248, 244, 240, 0.94);
+  border-radius: 12px;
+  padding: 22px 24px;
+}
+
+.vidro h3 {
+  font: 800 11px/14px "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.legenda {
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 11px;
+}
+
+.legenda li {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  gap: 12px;
+  align-items: start;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+/* ───── resumo: cinco cartões ───── */
+.cinco {
+  position: absolute;
+  left: 60px;
+  top: 250px;
+  width: 980px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 20px;
+}
+
+.card {
+  position: relative;
+  height: 322px;
+  border-radius: 14px;
+  padding: 18px 18px 16px;
+  color: var(--creme);
+}
+
+.card .rot {
+  font: 800 10.5px/14px "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.card .big {
+  font: 400 62px/56px "Bebas Neue", Impact, sans-serif;
+  margin-top: 16px;
+  letter-spacing: 0.005em;
+}
+
+.card .big small {
+  display: block;
+  font: 700 11.5px/16px "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0;
+  margin-top: 6px;
+}
+
+.card p {
+  margin-top: 14px;
+  font: 500 11.5px/16.5px "Plus Jakarta Sans", sans-serif;
+}
+
+.card .ori {
+  position: absolute;
+  left: 18px;
+  bottom: 16px;
+}
+
+.card .tag {
+  background: transparent;
+  border-color: rgba(248, 244, 240, 0.8);
+  color: var(--creme);
+}
+
+.card .tag--medido {
+  background: var(--creme);
+  color: var(--verde);
+  border-color: var(--creme);
+}
+
+.card .tag--amedir {
+  background: var(--tinta);
+  border-color: var(--tinta);
+}
+
+.nao {
+  position: absolute;
+  left: 60px;
+  top: 614px;
+  width: 980px;
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 37px;
+}
+
+.nao h3 {
+  font: 800 11px/14px "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.nao .t {
+  font: 500 17px/24px "Plus Jakarta Sans", sans-serif;
+}
+
+.nao .lista {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.nao .lista li {
+  padding-left: 14px;
+}
+
+/* unidades pequenas dentro dos números grandes (Bebas Neue só tem caixa alta) */
+.u,
+.p {
+  font: 700 0.26em/1 "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.u {
+  margin: 0 6px;
+}
+
+.p {
+  margin-right: 5px;
+}
+
+.card .big .menor {
+  font-size: 40px;
+}
+
+/* ───── acréscimos: catálogo e backup ───── */
+.tag--publico {
+  background: var(--salvia);
+  border-color: var(--salvia);
+  color: var(--tinta);
+}
+
+.tag--interno {
+  background: var(--azul);
+  border-color: var(--azul);
+  color: var(--creme);
+}
+
+.tag--restrito {
+  background: var(--petroleo);
+  border-color: var(--petroleo);
+  color: var(--creme);
+}
+
+.tag--confidencial {
+  background: var(--framboesa);
+  border-color: var(--framboesa);
+  color: var(--creme);
+}
+
+.tag--pii {
+  background: #fff;
+  border-color: var(--framboesa);
+  color: var(--framboesa);
+}
+
+.tag--pk {
+  background: var(--tinta);
+  border-color: var(--tinta);
+  color: var(--creme);
+}
+
+.tag--fk {
+  background: #fff;
+  border-color: var(--azul);
+  color: var(--azul);
+}
+
+.tag--uk {
+  background: #fff;
+  border-color: var(--floresta);
+  color: var(--floresta);
+}
+
+.tag--derivado {
+  background: #fff;
+  border: 1px dashed var(--azul);
+  color: var(--azul);
+}
+
+.card .tag--derivado {
+  background: transparent;
+  border: 1px dashed rgba(248, 244, 240, 0.8);
+  color: var(--creme);
+}
+
+/* tabela compacta para fichas longas; cabeçalho igual ao padrão */
+table.compacta {
+  font-size: 10.5px;
+  line-height: 14px;
+}
+
+table.compacta th,
+table.compacta td {
+  padding: 5px 6px;
+}
+
+/* etiquetas e valores mono dentro de tabelas não aumentam a altura da linha */
+td .tag,
+th .tag {
+  vertical-align: middle;
+  margin-top: -2px;
+  margin-bottom: -2px;
+}
+
+td .v,
+th .v {
+  line-height: 1;
+}
+
+/* auxiliares dos helpers de base.py */
+.bloco {
+  margin: 0;
+}
+
+.rot-sec {
+  font: 800 11px/14px "Plus Jakarta Sans", sans-serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.legenda.larga li {
+  grid-template-columns: 104px 1fr;
+}
+
+/* catálogo: tabela com larguras fixas (colgroup) e células em mono que podem quebrar */
+table.fixa {
+  table-layout: fixed;
+}
+
+td.mono {
+  font: 600 9.7px/14px "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
+.cinza {
+  color: var(--cinza);
+}
+
+/* catálogo: ficha de tabela */
+.ficha {
+  border-top: 1.5px solid var(--tinta);
+  padding-top: 12px;
+}
+
+.ficha-nome {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ficha-nome .v {
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 700;
+  margin-right: 6px;
+}
+
+.ficha-desc {
+  margin-top: 6px;
+  width: 643px;
+}
+
+.ficha-rot {
+  margin-bottom: 8px;
+}
+
+.rot-sec .v {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11.5px;
+}
+
+.ficha-lista {
+  font-size: 11.5px;
+  line-height: 16.5px;
+  gap: 7px;
+}
+
+.ficha-lista li::before {
+  top: 5px;
+}
+
+.ficha-lista.mono li {
+  font: 600 10.5px/15px "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+
+.ficha-vazio {
+  font-size: 11.5px;
+  line-height: 16.5px;
+}
+
+.perm {
+  display: grid;
+  grid-template-columns: 78px 1fr;
+  column-gap: 8px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--linha);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.perm b {
+  font-weight: 800;
+}
+
+.perm-linha {
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.perm-linha b {
+  font-weight: 800;
+}
+
+/* catálogo: índice e listas de tabelas das aberturas */
+.ind-cam {
+  font: 800 12.5px/18px "Plus Jakarta Sans", sans-serif;
+  padding-bottom: 5px;
+  border-bottom: 1.5px solid var(--tinta);
+}
+
+.ind-cam .v {
+  color: var(--cinza);
+  margin-right: 8px;
+}
+
+.ind-item {
+  display: grid;
+  grid-template-columns: 1fr 88px 24px;
+  column-gap: 8px;
+  align-items: center;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--linha);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.ind-item .tag {
+  justify-self: start;
+  margin: -2px 0;
+}
+
+.ind-nome {
+  color: inherit;
+  text-decoration: none;
+}
+
+.ind-pg {
+  text-align: right;
+}
+
+/* o atalho font: das regras acima zera os recursos da fonte; sem isto "5xx" vira "5×x" */
+* {
+  font-feature-settings: "calt" 0 !important;
+}
