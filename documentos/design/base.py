@@ -318,7 +318,10 @@ def paginar(blocos, altura_disponivel=ALTURA_UTIL):
                 raise ValueError(f"cabeçalho maior que uma página: {_nome(item)}")
             while True:  # primeiro pedaço: exige título + minimo_linhas
                 k, soma = cabem(item, 0, altura_disponivel - usado - espaco() - cab)
-                if k >= min(item.minimo_linhas, n):
+                # se ainda sobrariam menos de minimo_linhas (cabem não conseguiu reequilibrar),
+                # a tabela inteira vai para a página seguinte, salvo se esta já está vazia
+                orfa = 0 < n - k < item.minimo_linhas
+                if k >= min(item.minimo_linhas, n) and not (orfa and paginas[-1]):
                     break
                 if not paginas[-1]:
                     raise ValueError(f"título e linhas mínimas não cabem numa página vazia: {_nome(item)}")

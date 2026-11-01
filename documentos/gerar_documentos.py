@@ -121,8 +121,12 @@ def enumerar(itens):
 # fontes e alturas de linha usadas nas estimativas (as mesmas do documento.css)
 F_CORPO, L_CORPO = 12.5, 18
 F_FICHA, L_FICHA = 11.5, 16.5  # .ficha-lista
-F_PERM, L_PERM = 11, 15  # .perm-linha, .perm e .ficha-lista.mono (linha)
-F_MONO_LISTA = 10.5  # .ficha-lista.mono
+F_PERM, L_PERM = 11, 15  # .perm (legenda dos badges)
+F_LINHA, L_LINHA = 11, 15  # .ficha-linha (permissões, FKs)
+F_MONO_LINHA = 11 * 0.92  # .v dentro de .ficha-linha
+LARGURA_FICHA = 980
+ALT_FICHA_TOPO = 1.5 + 12  # régua e padding de .ficha
+ALT_FICHA_NOME = 26  # .ficha-nome (.v 20/26)
 F_TAB, F_MONO_TAB = 10.5, 9.7  # table.compacta e td.mono
 F_MONO_ITEM, L_ITEM = 10.2, 15  # .ind-item
 ALT_ROT = 14 + 8  # .rot-sec + .ficha-rot (margem de baixo)
@@ -290,45 +294,58 @@ def item_indice(nome, nivel, pagina, largura):
 
 
 def secao(rotulo, html, altura):
-    return base.Bloco(f'<div class="rot-sec ficha-rot">{rotulo}</div>{html}', ALT_ROT + altura + 2)
+    return base.Bloco(f'<div class="rot-sec ficha-rot">{rotulo}</div>{html}', ALT_ROT + altura)
 
 
-def secao_lista(rotulo, itens, vazio="—", mono=False):
-    """itens: [(html, altura)]. Lista com losango, ou o texto de vazio em cinza."""
-    if not itens:
-        return secao(rotulo, f'<p class="ficha-vazio cinza">{vazio}</p>', L_FICHA)
-    classe = "lista ficha-lista mono" if mono else "lista ficha-lista"
-    html = f'<ul class="{classe}">' + "".join(f"<li>{h}</li>" for h, _ in itens) + "</ul>"
-    return secao(rotulo, html, sum(a for _, a in itens) + 7 * (len(itens) - 1))
+def secao_lista(rotulo, textos, largura):
+    """Lista com losango (texto verbatim do catálogo), ou "—" em cinza se vazia."""
+    if not textos:
+        return secao(rotulo, '<p class="ficha-vazio cinza">—</p>', L_FICHA)
+    html = '<ul class="lista ficha-lista">' + "".join(f"<li>{prosa(t)}</li>" for t in textos) + "</ul>"
+    altura = sum(alt(linhas(t, largura - 14, F_FICHA), L_FICHA) for t in textos) + 7 * (len(textos) - 1)
+    return secao(rotulo, html, altura)
 
 
-def itens_texto(textos, largura):
-    return [(prosa(t), alt(linhas(t, largura - 14, F_FICHA), L_FICHA)) for t in textos]
+def rotulo_linha(rotulo):
+    """Rótulo no estilo .rot (caixa alta, 800, 0,07 em) no início de uma linha corrida, e seus segmentos."""
+    return (f'<span class="rot-sec">{rotulo}</span> ',
+            [seg(rotulo.upper(), F_LINHA, 800, espacamento=0.07), seg(" ", F_LINHA)])
 
 
-def secao_permissoes(permissoes, badges, largura):
-    """Permissões numa linha corrida: perfil em negrito, badge legível e o detalhe em cinza."""
-    partes, plano = [], []
-    for p in permissoes:
+def linha_permissoes(permissoes, badges):
+    """Uma linha de largura total: perfil em negrito, badge legível e o detalhe em cinza."""
+    html, segs = rotulo_linha("Permissões")
+    partes = []
+    for i, p in enumerate(permissoes):
         texto = badge_legivel(p["badge"], badges)
         detalhe = f' <span class="cinza">({prosa(p["detalhe"])})</span>' if p["detalhe"] else ""
         partes.append(f'<b>{esc(p["perfil"])}</b>&nbsp;{esc(texto)}{detalhe}')
-        plano.append(f'{p["perfil"]}xx {texto}' + (f' ({p["detalhe"]})' if p["detalhe"] else ""))
-    html = '<p class="perm-linha">' + '<span class="cinza"> · </span>'.join(partes) + "</p>"
-    # o negrito é mais largo que a média: estima com 10% menos de largura
-    altura = alt(linhas(" · ".join(plano), largura * 0.9, F_PERM), L_PERM)
+        if i:
+            segs.append(seg(" · ", F_LINHA))
+        segs += [seg(p["perfil"], F_LINHA, 800), seg(" " + texto, F_LINHA)]
+        if p["detalhe"]:
+            segs.append(seg(f' ({p["detalhe"]})', F_LINHA))
+    html += '<span class="cinza"> · </span>'.join(partes)
     if any(p["badge"].endswith("*") for p in permissoes):
-        html += f'<p class="nota" style="margin-top:6px">* {esc(badges["*"])}</p>'
-        altura += 6 + 15
-    return secao("Permissões", html, altura)
+        html += f'<span class="cinza"> — * {esc(badges["*"])}</span>'
+        segs.append(seg(f' — * {badges["*"]}', F_LINHA))
+    return f'<p class="ficha-linha">{html}</p>', contar_linhas(unidades(segs), LARGURA_FICHA)
 
 
-def secao_fks(fks, largura):
-    # quebra só nos espaços e depois do '.', para não partir nome de coluna
-    itens = [(f"{esc(o)} → {esc(t)}.<wbr>{esc(d)}",
-              alt(base.linhas_texto(f"{o} → {t}. {d}", largura - 14, F_MONO_LISTA, mono=True), L_PERM))
-             for o, t, d in fks]
-    return secao_lista("FKs de saída", itens, vazio="nenhuma", mono=True)
+def linha_fks(fks):
+    """Uma linha de largura total: 'coluna -> tabela.coluna' em .v, separados por ' · '."""
+    html, segs = rotulo_linha("FKs de saída")
+    if not fks:
+        html += '<span class="cinza">nenhuma</span>'
+        segs.append(seg("nenhuma", F_LINHA))
+    for i, (o, t, d) in enumerate(fks):
+        if i:
+            html += '<span class="cinza"> · </span>'
+            segs.append(seg(" · ", F_LINHA))
+        # quebra nos espaços e depois do '.', para não partir nome de coluna
+        html += f'<span class="v">{esc(o)} -&gt; {esc(t)}.<wbr>{esc(d)}</span>'
+        segs.append(seg(f"{o} -> {t}.{d}", F_MONO_LINHA, mono=True, quebra="."))
+    return f'<p class="ficha-linha">{html}</p>', contar_linhas(unidades(segs), LARGURA_FICHA)
 
 
 def linha_coluna(c):
@@ -346,29 +363,30 @@ def linha_coluna(c):
 
 
 def ficha(t, badges):
-    """Ficha da tabela. O cabeçalho e a faixa de 3 colunas vão no título da TabelaPaginavel das colunas:
-    assim a ficha só começa numa página se couberem também o título e 2 linhas da tabela."""
+    """Ficha da tabela: nome e etiquetas; descrição; linha de permissões; linha de FKs; faixa de 2 colunas
+    com regras e observações (omitida se ambas vazias); tabela das colunas. Tudo antes da tabela vai no
+    título da TabelaPaginavel, para a ficha só começar numa página se couberem também 3 linhas."""
     nome = t["nome"]
-    cab = (f'<div class="ficha-nome"><span class="v">{esc(nome)}</span>{tag_neutra(t["tipo"])}'
-           f'{base.tag(t["nivel"])}{base.tag("derivado")}</div>'
-           f'<p class="ficha-desc">{prosa(t["descricao"])}</p>')
-    alt_cab = 1.5 + 12 + 26 + 6 + alt(linhas(t["descricao"], 643, F_CORPO), L_CORPO)
-    faixa = base.FaixaColunas(
-        [[secao_lista("Regras de negócio", itens_texto(t["regras"], 300))],
-         [secao_lista("Observações", itens_texto(t["observacoes"], 306))],
-         [secao_permissoes(t["permissoes"], badges, 307), secao_fks(t["fks"], 307)]],
-        [300, 306, 307], gap=[37, 30])
+    perm_html, n_perm = linha_permissoes(t["permissoes"], badges)
+    fks_html, n_fks = linha_fks(t["fks"])
+    html = (f'<div class="ficha" id="{esc(nome)}">'
+            f'<div class="ficha-nome"><span class="v">{esc(nome)}</span>{tag_neutra(t["tipo"])}'
+            f'{base.tag(t["nivel"])}{base.tag("derivado")}</div>'
+            f'<p class="ficha-desc">{prosa(t["descricao"])}</p>{perm_html}{fks_html}')
+    altura = (ALT_FICHA_TOPO + ALT_FICHA_NOME + 6 + alt(linhas(t["descricao"], LARGURA_FICHA, F_CORPO), L_CORPO)
+              + 8 + alt(n_perm, L_LINHA) + 4 + alt(n_fks, L_LINHA))
+    if t["regras"] or t["observacoes"]:
+        faixa = base.FaixaColunas([[secao_lista("Regras de negócio", t["regras"], 471)],
+                                   [secao_lista("Observações", t["observacoes"], 472)]], [471, 472], gap=37)
+        html += f'<div style="margin-top:14px">{faixa.html}</div>'
+        altura += 14 + faixa.altura
     rotulo = f'Colunas de <span class="v">{esc(nome)}</span>'
-    titulo = (f'<div class="ficha" id="{esc(nome)}">{cab}<div style="margin-top:16px">{faixa.html}</div>'
-              f'<div class="rot-sec ficha-rot" style="margin-top:18px">{rotulo}</div></div>')
+    html += f'<div class="rot-sec ficha-rot" style="margin-top:14px">{rotulo}</div></div>'
+    altura += 14 + ALT_ROT
     linhas_tab = [linha_coluna(c) for c in t["colunas"]]
-    altura_titulo = math.ceil(alt_cab + 16 + faixa.altura + 18 + ALT_ROT)
-    # ficha que cabe inteira numa página não é dividida: vai toda para a página seguinte
-    inteira = altura_titulo + base.ALT_THEAD_COMPACTA + sum(h for _, h in linhas_tab) <= base.ALTURA_UTIL
     return base.TabelaPaginavel(
-        thead_html=thead_fixo(COLS_FICHA), linhas=linhas_tab,
-        titulo_html=titulo, titulo_altura=altura_titulo,
-        classe_tabela="compacta fixa", minimo_linhas=len(linhas_tab) if inteira else 2, id=nome, nome=nome,
+        thead_html=thead_fixo(COLS_FICHA), linhas=linhas_tab, titulo_html=html, titulo_altura=math.ceil(altura),
+        classe_tabela="compacta fixa", minimo_linhas=3, id=nome, nome=nome,
         titulo_continuacao_html=f'<div class="rot-sec ficha-rot">{rotulo} (continuação)</div>',
         titulo_continuacao_altura=ALT_ROT)
 
@@ -379,14 +397,16 @@ def cabecalho(titulo_html, sub_html, largura_sub=643):
                       base.ALT_TITULO_H2 + ALT_SUB)
 
 
-def paginas_claras(blocos, seed, cheio=True):
-    """Pagina os blocos no contêiner padrão, cada página com a faixa .topo e a arte do topo."""
+ALTURA_FAIXA = 84  # faixa .topo das páginas paginadas: termina acima do conteúdo (top 100)
+
+
+def paginas_claras(blocos, seed):
+    """Pagina os blocos no contêiner padrão; cada página tem a faixa .topo curta e a arte do topo."""
     paginas, onde = base.paginar(blocos)
     saida = []
     for i, pedacos in enumerate(paginas):
         fichas = [nome for nome, j in onde.items() if j == i]
-        c = cheio if isinstance(cheio, bool) else cheio(i)
-        saida.append(Pagina("", base.abre(seed + i, c) + "\n" + conteudo(pedacos), fichas))
+        saida.append(Pagina("", base.abre(seed + i, True, ALTURA_FAIXA) + "\n" + conteudo(pedacos), fichas))
     return saida
 
 
@@ -533,7 +553,6 @@ def pagina_matriz(camadas):
     extra = (f'<p class="corpo" style="margin-top:14px">Todas as tabelas de {enumerar(esc(n) for n in todas_conf)} '
              f'estão nesse nível.</p>') if todas_conf else ""
     perfis = enumerar(perfis_de_negocio(camadas))
-    rot = "font:800 11px/14px 'Plus Jakarta Sans',sans-serif;letter-spacing:.07em;text-transform:uppercase;margin-bottom:9px"
     corpo = f"""{base.abre(41, True, 590)}
 <div class="a c1 l1">
   <h2>Camada × nível de acesso {base.tag("derivado")}</h2>
@@ -545,11 +564,11 @@ def pagina_matriz(camadas):
 </div>
 <div class="a c1 sig" style="top:630px"><div class="rot">O que isso significa</div><p>{total["publico"]} tabelas são abertas a todos os perfis de negócio; {total["confidencial"]} ficam fora do alcance de todos eles.</p></div>
 <div class="a c2 corpo" style="top:630px">
-  <div class="rot" style="{rot}">Como o nível é calculado</div>
+  <div class="rot-sec ficha-rot">Como o nível é calculado</div>
   <p>Pelas permissões de cada tabela no catálogo, contando só os perfis de negócio: {esc(perfis)}. Acesso marcado com * conta como restrito.</p>
 </div>
 <div class="a c3 corpo" style="top:630px">
-  <div class="rot" style="{rot}">Limite</div>
+  <div class="rot-sec ficha-rot">Limite</div>
   <p>É uma leitura das permissões, não uma classificação oficial. Por isso o nível aparece com a etiqueta {base.tag("derivado")} em todo o documento.</p>
 </div>"""
     return Pagina("", corpo)
@@ -622,7 +641,7 @@ def paginas_indice(camadas, pagina_de):
         partes, _ = base.paginar(blocos)
         if len(partes) != 1:
             raise ValueError("índice: coluna maior que a página")
-        saida.append(Pagina("", base.abre(43 + i, True) + "\n" + conteudo(partes[0])))
+        saida.append(Pagina("", base.abre(43 + i, True, ALTURA_FAIXA) + "\n" + conteudo(partes[0])))
     return saida
 
 
@@ -640,9 +659,7 @@ def pagina_abertura(c, pagina_de):
 
 
 def paginas_fichas(c, badges):
-    blocos = [ficha(t, badges) for t in c["tabelas"]]
-    # alterna a faixa creme cheia e a de 703px, como a referência
-    return paginas_claras(blocos, seed=200 + 10 * c["numero"], cheio=lambda i: i % 2 == 1)
+    return paginas_claras([ficha(t, badges) for t in c["tabelas"]], seed=200 + 10 * c["numero"])
 
 
 def paginas_pii(camadas, pagina_de):
@@ -654,28 +671,25 @@ def paginas_pii(camadas, pagina_de):
     cols = [("Tabela", 168), ("Coluna", 140), ("Tipo", 96), ("Nível", 100), ("Regra de acesso", 424), ("Pág.", 52)]
     w = dict(cols)
 
-    def montar(agrupar):
-        saida, anterior = [], None
-        for t, c in linhas_pii:
-            mesma = agrupar and t["nome"] == anterior
-            regra = '<span class="cinza">a mesma da linha acima</span>' if mesma else prosa(regra_de_acesso(t["permissoes"]))
-            texto_regra = "a mesma da linha acima" if mesma else regra_de_acesso(t["permissoes"])
-            html = (f'<tr><td class="mono">{quebravel(t["nome"])}</td><td class="mono">{quebravel(c["nome"])}</td>'
-                    f'<td class="mono">{esc(c["tipo"])}</td><td>{base.tag(c["nivel"])}</td><td>{regra}</td>'
-                    f'<td class="v">{pagina_de.get(t["nome"], 0)}</td></tr>')
+    # cada tabela vira um grupo indivisível de <tr>: a regra (verbatim) aparece uma vez, em rowspan,
+    # e o grupo nunca é cortado por uma quebra de página
+    grupos = {}
+    for t, c in linhas_pii:
+        grupos.setdefault(t["nome"], (t, []))[1].append(c)
+    linhas_t = []
+    for t, cols_t in grupos.values():
+        regra = regra_de_acesso(t["permissoes"])
+        trs, soma = [], 0
+        for i, c in enumerate(cols_t):
+            celula_regra = (f'<td class="regra" rowspan="{len(cols_t)}">{prosa(regra)}</td>' if i == 0 else "")
+            trs.append(f'<tr><td class="mono">{quebravel(t["nome"])}</td><td class="mono">{quebravel(c["nome"])}</td>'
+                       f'<td class="mono">{esc(c["tipo"])}</td><td>{base.tag(c["nivel"])}</td>{celula_regra}'
+                       f'<td class="v">{pagina_de.get(t["nome"], 0)}</td></tr>')
             n = max(linhas_quebravel(t["nome"], w["Tabela"] - 12, F_MONO_TAB),
-                    linhas_quebravel(c["nome"], w["Coluna"] - 12, F_MONO_TAB),
-                    linhas(texto_regra, w["Regra de acesso"] - 12, F_TAB))
-            saida.append((html, base.altura_linha_tabela(n, compacta=True)))
-            anterior = t["nome"]
-        return saida
-
-    # a regra só é omitida nas linhas seguintes da mesma tabela se tudo couber numa página
-    linhas_t = montar(agrupar=True)
-    cabe = (cab.altura + base.ESPACO_BLOCOS + ALT_ROT + base.ALT_THEAD_COMPACTA + sum(h for _, h in linhas_t)
-            <= base.ALTURA_UTIL)
-    if not cabe:
-        linhas_t = montar(agrupar=False)
+                    linhas_quebravel(c["nome"], w["Coluna"] - 12, F_MONO_TAB))
+            soma += base.altura_linha_tabela(n, compacta=True)
+        alt_regra = base.altura_linha_tabela(linhas(regra, w["Regra de acesso"] - 12, F_TAB), compacta=True)
+        linhas_t.append(("".join(trs), max(soma, alt_regra)))
     tabela = base.TabelaPaginavel(
         thead_html=thead_fixo(cols, a_direita=("Pág.",)), linhas=linhas_t,
         titulo_html='<div class="rot-sec ficha-rot">Colunas PII</div>', titulo_altura=ALT_ROT,
@@ -757,19 +771,19 @@ def main(argv=None):
     ap.add_argument("--sem-pdf", action="store_true", help="só grava os HTML, sem converter para PDF")
     args = ap.parse_args(argv)
 
-    gerados = []
-    for gerar in DOCUMENTOS:
-        nome, html, n = gerar()
-        caminho = AQUI / nome
-        caminho.write_text(html, encoding="utf-8", newline="\n")
-        gerados.append((caminho, n))
-
-    if args.sem_pdf:
-        for caminho, n in gerados:
-            print(f"ok: documentos/{caminho.name} ({n} páginas)")
-        return 0
-
     try:
+        gerados = []
+        for gerar in DOCUMENTOS:
+            nome, html, n = gerar()
+            caminho = AQUI / nome
+            caminho.write_text(html, encoding="utf-8", newline="\n")
+            gerados.append((caminho, n))
+
+        if args.sem_pdf:
+            for caminho, n in gerados:
+                print(f"ok: documentos/{caminho.name} ({n} páginas)")
+            return 0
+
         with base.Conversor() as conversor:
             for caminho, n in gerados:
                 pdf = caminho.with_suffix(".pdf")
