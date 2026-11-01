@@ -254,8 +254,10 @@ def secao_permissoes(permissoes, badges, largura):
 
 
 def secao_fks(fks, largura):
-    itens = [(f"{quebravel(o)} → {quebravel(t + '.' + d)}",
-              alt(linhas_quebravel(f"{o} → {t}.{d}", largura - 14, F_MONO_LISTA), L_PERM)) for o, t, d in fks]
+    # quebra só nos espaços e depois do '.', para não partir nome de coluna
+    itens = [(f"{esc(o)} → {esc(t)}.<wbr>{esc(d)}",
+              alt(base.linhas_texto(f"{o} → {t}. {d}", largura - 14, F_MONO_LISTA, mono=True), L_PERM))
+             for o, t, d in fks]
     return secao_lista("FKs de saída", itens, vazio="nenhuma", mono=True)
 
 
