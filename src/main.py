@@ -20,6 +20,8 @@ Uso:
                 (leve 0.3 | medio 1 | pesado 3). Padrão: medio (~55 MB).
     --force     pula a confirmação antes de apagar os dados existentes
                 (mesmo efeito de exportar ECOCIENTE_ALLOW_RESET=1).
+    --so-explicacoes  não apaga nem popula nada: só preenche as explicações
+                vazias dos quizzes num banco já populado.
 """
 
 import argparse
@@ -73,6 +75,7 @@ from utils.database import (
     vincular_categorias_ponto_coleta,
     popular_cursos_e_aulas,
     popular_quizzes,
+    preencher_explicacoes_quizzes,
     gerar_postagens,
     encerrar_janelas_postagens,
     registrar_ledger_pontos,
@@ -127,6 +130,8 @@ def parse_args():
                         help="Volume da massa: leve (~25 MB), medio (~55 MB), pesado (~145 MB).")
     parser.add_argument("--force", action="store_true",
                         help="Pula a confirmação antes de apagar os dados existentes.")
+    parser.add_argument("--so-explicacoes", action="store_true",
+                        help="Só preenche as explicações vazias dos quizzes, sem apagar nada.")
     return parser.parse_args()
 
 
@@ -153,6 +158,18 @@ def escalar(n, fator):
 
 def main():
     args = parse_args()
+
+    if args.so_explicacoes:
+        # não apaga nada, então dispensa a confirmação de limpeza
+        conn = get_connection()
+        try:
+            with conn.cursor() as cur:
+                preenchidas = preencher_explicacoes_quizzes(cur)
+        finally:
+            conn.close()
+        print(f"Explicações dos quizzes: {preenchidas} pergunta(s) preenchida(s) em {target_description()}.")
+        return
+
     seed = db.SEED if args.seed is None else args.seed
     fk.reseed(seed)
     rng.seed(seed)

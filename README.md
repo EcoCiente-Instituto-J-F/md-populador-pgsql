@@ -103,6 +103,7 @@ cd src
 python main.py                      # escala "medio", seed 42, pede confirmação
 python main.py --escala leve        # carga rápida para desenvolvimento
 python main.py --seed 7 --force     # outra massa, sem confirmação
+python main.py --so-explicacoes     # só preenche explicações vazias dos quizzes, sem apagar nada
 python -m tests.test_dau            # self-check do gerador de DAU
 python -m tests.test_schema         # self-check da checagem de schema
 python -m tests.test_curriculo      # self-check do conteúdo da trilha (explicação em todas as perguntas)
@@ -114,9 +115,10 @@ python -m tests.test_ui             # self-check da lógica do painel e do servi
 | `--escala leve\|medio\|pesado` | Multiplica condomínios, cooperativas e usuários por 0.3 / 1 / 3. Padrão: `medio`. |
 | `--seed N` | Troca a semente. A mesma seed gera sempre a mesma massa (exceto tokens e hashes, que usam `secrets`). |
 | `--force` | Pula a confirmação antes de apagar os dados. O mesmo vale para `ECOCIENTE_ALLOW_RESET=1`. |
+| `--so-explicacoes` | Não apaga nem popula nada: só preenche `tb_perguntas_quiz.explicacao` onde estiver vazia, casando por título do quiz + ordem. Para bancos populados antes da coluna existir. |
 
 > [!WARNING]
-> Cada execução faz `TRUNCATE … RESTART IDENTITY CASCADE` em **todas as tabelas de negócio** antes de popular. Só as `tb_lkp_*` são mantidas. Confira o banco de destino antes de confirmar.
+> Cada execução (exceto `--so-explicacoes`) faz `TRUNCATE … RESTART IDENTITY CASCADE` em **todas as tabelas de negócio** antes de popular. Só as `tb_lkp_*` são mantidas. Confira o banco de destino antes de confirmar.
 
 Se a carga falhar no meio, o script limpa o banco (se preciso, abrindo uma nova conexão) e sai com código `1`.
 
