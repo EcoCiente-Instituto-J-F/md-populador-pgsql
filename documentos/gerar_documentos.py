@@ -139,24 +139,94 @@ def quebravel(texto):
     return esc(texto).replace("_", "_<wbr>").replace(".", ".<wbr>")
 
 
-def linhas_quebravel(texto, largura_px, fonte_px, mono=True):
-    """Linhas de um nome técnico com pontos de quebra em '_' e '.' (conservador)."""
-    return base.linhas_texto(str(texto).replace("_", "_ ").replace(".", ". "), largura_px, fonte_px, mono)
-
-
 def prosa(texto):
     """Texto corrido do catálogo: escapado, podendo quebrar depois de '/' (ex.: tipos_a/tipos_b)."""
     return esc(texto).replace("/", "/<wbr>")
 
 
-def linhas(texto, largura_px, fonte_px):
-    """base.linhas_texto para texto em Plus Jakarta Sans, com maiúsculas pesando ~35% a mais
-    (a média de 0,56 em subestima palavras como CREDITO/ESTORNO) e '/' como ponto de quebra."""
-    palavras = []
-    for p in str(texto).replace("/", "/ ").split(" "):
-        maiusculas = sum(ch.isupper() for ch in p)
-        palavras.append(p + "x" * math.ceil(0.35 * maiusculas))
-    return base.linhas_texto(" ".join(palavras), largura_px, fonte_px)
+# ───── estimativa de linhas pela largura de cada caractere ─────
+# A média fixa de base.linhas_texto (0,56 em) erra uma linha inteira com frequência; aqui cada caractere
+# tem a largura medida da fonte, e a quebra só acontece onde o navegador quebra (espaço, '-' antes de
+# letra e os <wbr> que o gerador insere). JetBrains Mono tem 0,6 em em todos os caracteres.
+# avanço de cada caractere do Plus Jakarta Sans, em milésimos de em (medido no Chromium, arredondado para cima)
+_CARACTERES = ' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~ª°·ºÀÁÂÃÇÉÊÍÓÔÕ×Úàáâãçéêíóôõúü–—‘’“”…'
+_MILESIMOS_500 = (
+    "173 312 429 832 646 998 754 267 323 323 499 624 299 532 317 455 724 382 599 610 638 616 599 548 629 "
+    "599 317 337 624 624 624 527 928 672 692 779 741 606 583 817 735 264 386 662 535 855 738 878 645 878 "
+    "648 646 522 706 667 996 618 635 580 349 349 624 620 362 575 669 603 669 614 388 659 580 237 237 558 "
+    "237 913 580 654 669 669 350 511 396 580 533 826 511 553 460 344 332 344 624 452 500 317 498 672 672 "
+    "672 672 779 606 606 264 878 878 878 624 706 575 575 575 575 603 614 614 209 654 654 654 580 580 597 "
+    "927 299 299 467 467 717 "
+)
+_MILESIMOS_800 = (
+    "180 400 532 956 647 1070 813 333 407 407 560 678 386 634 408 532 700 413 596 612 662 614 604 564 633 "
+    "604 408 428 678 678 678 611 926 732 690 772 739 589 587 804 732 287 396 687 547 912 742 878 649 878 "
+    "667 647 552 724 712 1032 682 672 567 449 449 678 684 391 583 673 611 673 611 401 648 599 260 260 586 "
+    "260 929 599 651 673 673 386 515 421 599 582 912 582 602 492 425 426 425 678 442 552 408 481 732 732 "
+    "732 732 772 589 589 287 878 878 878 678 724 583 583 583 583 611 611 611 238 651 651 651 599 599 684 "
+    "1014 386 386 606 606 808 "
+)
+
+
+def _tabela(milesimos):
+    return dict(zip(_CARACTERES, (int(v) for v in milesimos.split())))
+
+
+LARGURA_CHAR = {500: _tabela(_MILESIMOS_500), 800: _tabela(_MILESIMOS_800)}
+
+
+def _larg(c, fonte, peso, mono):
+    if mono:
+        return 0.6 * fonte
+    return LARGURA_CHAR[peso].get(" " if c == " " else c, 1000) / 1000 * fonte  # desconhecido: 1 em
+
+
+def unidades(segmentos):
+    """segmentos: [(texto, fonte_px, peso, mono, espacamento_em, quebra_depois)].
+    Devolve os pedaços entre oportunidades de quebra: [(largura, largura do espaço que vem depois)]."""
+    plano = [(c, s) for s in segmentos for c in s[0]]
+    saida, atual = [], 0.0
+    for i, (c, (_, fonte, peso, mono, esp, quebra)) in enumerate(plano):
+        if c == " ":
+            saida.append((atual, _larg(" ", fonte, peso, mono) + esp * fonte))
+            atual = 0.0
+            continue
+        atual += _larg(c, fonte, peso, mono) + esp * fonte
+        prox = plano[i + 1][0] if i + 1 < len(plano) else ""
+        if prox and prox != " " and (c in quebra or (c == "-" and prox.isalpha())):
+            saida.append((atual, 0.0))
+            atual = 0.0
+    saida.append((atual, 0.0))
+    return saida
+
+
+def contar_linhas(pedacos, largura_px):
+    """Quebra gulosa, como o navegador; 1 px de folga na largura."""
+    n, linha, espaco = 1, 0.0, 0.0
+    limite = largura_px - 1
+    for w, sp in pedacos:
+        if linha == 0:
+            linha = w
+        elif linha + espaco + w <= limite:
+            linha += espaco + w
+        else:
+            n, linha = n + 1, w
+        espaco = sp
+    return n
+
+
+def seg(texto, fonte, peso=500, mono=False, espacamento=0.0, quebra="/"):
+    return (str(texto), fonte, peso, mono, espacamento, quebra)
+
+
+def linhas(texto, largura_px, fonte_px, peso=500):
+    """Linhas de texto corrido em Plus Jakarta Sans (com quebra depois de '/')."""
+    return contar_linhas(unidades([seg(texto, fonte_px, peso)]), largura_px)
+
+
+def linhas_quebravel(texto, largura_px, fonte_px):
+    """Linhas de um nome técnico em JetBrains Mono, com quebra depois de '_' e '.' (ver quebravel)."""
+    return contar_linhas(unidades([seg(texto, fonte_px, mono=True, quebra="_.")]), largura_px)
 
 
 def alt(linhas, altura_linha):
