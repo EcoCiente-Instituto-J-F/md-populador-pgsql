@@ -121,7 +121,7 @@ def enumerar(itens):
 # fontes e alturas de linha usadas nas estimativas (as mesmas do documento.css)
 F_CORPO, L_CORPO = 12.5, 18
 F_FICHA, L_FICHA = 11.5, 16.5  # .ficha-lista
-F_PERM, L_PERM = 11, 15  # .perm e .ficha-lista.mono
+F_PERM, L_PERM = 11, 15  # .perm-linha, .perm e .ficha-lista.mono (linha)
 F_MONO_LISTA = 10.5  # .ficha-lista.mono
 F_TAB, F_MONO_TAB = 10.5, 9.7  # table.compacta e td.mono
 F_MONO_ITEM, L_ITEM = 10.2, 15  # .ind-item
