@@ -197,13 +197,13 @@ def arvores_lado(i):
     """Duas árvores da arte lateral, variando posição, tamanho e paleta com i."""
     a, b = (arte.PALETA_VERDE, arte.PALETA_ROSA) if i % 2 else (arte.PALETA_ROSA, arte.PALETA_VERDE)
     return [{"x": 100 + (i * 37) % 70, "y": 800, "s": 70 + (i * 13) % 25, "paleta": a},
-            {"x": 400 + (i * 23) % 60, "y": 815, "s": 62 + (i * 17) % 28, "paleta": b}]
+            {"x": 370 + (i * 23) % 60, "y": 815, "s": 62 + (i * 17) % 28, "paleta": b}]
 
 
 # ═════════════ catálogo: peças ═════════════
 # árvores pequenas no pé da arte, para os dois vidros altos da página "Como ler" não as cobrirem
-ARVORES_BAIXAS = [{"x": 110, "y": 850, "s": 44, "paleta": arte.PALETA_VERDE},
-                  {"x": 440, "y": 852, "s": 38, "paleta": arte.PALETA_ROSA}]
+ARVORES_BAIXAS = [{"x": 90, "y": 850, "s": 44, "paleta": arte.PALETA_VERDE},
+                  {"x": 360, "y": 852, "s": 38, "paleta": arte.PALETA_ROSA}]
 CAB_CATALOGO = "Catálogo de dados · EcoCiente · PostgreSQL"
 
 COLS_FICHA = [("Coluna", 196), ("Tipo", 96), ("Nulo", 40), ("Chave", 72), ("PII", 42), ("Nível", 100),
@@ -562,8 +562,8 @@ def pagina_abertura(c, pagina_de):
     altura = 44 + 26 + sum(h for _, h in itens)
     topo = 236 if 236 + altura <= 700 else max(118, 750 - altura)
     vidro = (f'<div class="vidro" style="left:600px;top:{topo}px;width:440px">\n'
-             f'  <h3>{n} tabela{"s" if n != 1 else ""} nesta camada</h3>\n  {"".join(h for h, _ in itens)}\n</div>')
-    titulo = f'{c["numero"]:02d} · {c["nome"]}'
+             f'  <h3>Camada {c["numero"]:02d} · {n} tabela{"s" if n != 1 else ""}</h3>\n  {"".join(h for h, _ in itens)}\n</div>')
+    titulo = c["nome"]  # o número da camada vai no título do vidro
     corpo = base.pagina_escura(titulo, c["descricao"], vidro, seed=100 + 7 * c["numero"],
                                arvores=arvores_lado(c["numero"]))
     return Pagina("escura", corpo)
