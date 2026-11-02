@@ -3,7 +3,8 @@
 // Origem: ecociente_schema.sql (OLTP, 49 tabelas) + ecociente_datamart.sql (9 tabelas)
 // Dialeto de origem: PostgreSQL 14+
 //
-// Nao representados em DBML: views (vw_*), functions, procedures, triggers,
+// Views (vw_*) entram como Table com headercolor roxo e note 'VIEW' (DBML nao
+// tem objeto VIEW). Nao representados: functions, procedures, triggers,
 // indices parciais (WHERE) e ordenacao DESC de indices. Onde relevante, ficam
 // como note.
 // ============================================================================
@@ -971,6 +972,287 @@ Ref fato_coletas_sk_tempo_fkey: fato_coletas.sk_tempo > dim_tempo.sk_tempo
 Ref fato_coletas_sk_condominio_fkey: fato_coletas.sk_condominio > dim_condominio.sk_condominio
 Ref fato_coletas_sk_cooperativa_fkey: fato_coletas.sk_cooperativa > dim_cooperativa.sk_cooperativa
 Ref fato_coletas_sk_status_agendamento_fkey: fato_coletas.sk_status_agendamento > dim_status_agendamento.sk_status_agendamento
+
+// ============================================================================
+// VIEWS (representadas como Table com headercolor roxo e note 'VIEW')
+// DBML nao possui objeto VIEW; as colunas abaixo refletem o SELECT de cada view.
+// Sem Refs de proposito (views nao tem PK/FK); as fontes estao no note.
+// ============================================================================
+
+// ----- Views analiticas (ecociente_schema.sql) -----
+
+Table vw_engajamento_moradores [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_moradores, tb_usuarios, tb_condominios, tb_postagens, tb_rel_usuarios_cursos'] {
+  id_morador integer
+  id_usuario integer
+  nome_usuario varchar(100)
+  condominio_id integer
+  nome_condominio varchar(255)
+  qtd_fotos_realizadas bigint
+  qtd_quizzes_realizados bigint
+  qtd_acoes_total bigint
+}
+
+Table vw_desempenho_condominio [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_condominios, tb_moradores, tb_postagens, tb_rel_usuarios_cursos, tb_agendamentos_coletas, tb_visitas_coletas'] {
+  id_condominio integer
+  nome_condominio varchar(255)
+  total_moradores bigint
+  total_postagens bigint
+  postagens_aprovadas bigint
+  postagens_rejeitadas bigint
+  postagens_pendentes bigint
+  quizzes_realizados bigint
+  tb_visitas_coletas bigint
+  visitas_coletas_realizadas bigint
+}
+
+Table vw_postagens_por_categoria [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_lkp_categorias_residuos, tb_postagens, tb_lkp_status_validacoes_postagens'] {
+  id_categoria integer
+  nome_categoria varchar(100)
+  qtd_postagens bigint
+  qtd_aprovadas bigint
+  qtd_rejeitadas bigint
+  qtd_pendentes bigint
+}
+
+Table vw_postagens_aprovadas_rejeitadas_condominio [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_postagens, tb_condominios, tb_lkp_status_validacoes_postagens'] {
+  condominio_id integer
+  nome_condominio varchar(255)
+  total_postagens bigint
+  qtd_aprovadas bigint
+  qtd_rejeitadas bigint
+  qtd_pendentes bigint
+  taxa_aprovacao_percentual numeric
+  taxa_rejeicao_percentual numeric
+  taxa_pendencia_percentual numeric
+}
+
+Table vw_residuos_por_periodo [headercolor: #7B61FF, note: 'VIEW | Fonte: tb_postagens'] {
+  ano integer
+  mes integer
+  periodo date
+  qtd_residuos_registrados bigint
+}
+
+Table vw_participacao_sustentabilidade [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_condominios, tb_moradores, tb_postagens, tb_rel_usuarios_cursos'] {
+  id_condominio integer
+  nome_condominio varchar(255)
+  total_moradores bigint
+  moradores_participantes bigint
+  taxa_participacao_percentual numeric
+}
+
+Table vw_desempenho_coletas [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_condominios, tb_agendamentos_coletas, tb_visitas_coletas'] {
+  id_condominio integer
+  nome_condominio varchar(255)
+  coletas_agendadas bigint
+  visitas_programadas bigint
+  coletas_realizadas bigint
+  taxa_sucesso_percentual numeric
+}
+
+Table vw_coletas_por_mes [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_agendamentos_coletas, tb_visitas_coletas'] {
+  ano integer
+  mes integer
+  coletas_agendadas bigint
+  visitas_programadas bigint
+  coletas_realizadas bigint
+}
+
+Table vw_coletas_por_condominio [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_condominios, tb_agendamentos_coletas, tb_visitas_coletas'] {
+  id_condominio integer
+  nome_condominio varchar(255)
+  coletas_agendadas bigint
+  visitas_programadas bigint
+  coletas_realizadas bigint
+  taxa_sucesso_percentual numeric
+}
+
+Table vw_coletas_por_cooperativa [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_cooperativas, tb_agendamentos_coletas, tb_visitas_coletas'] {
+  id_cooperativa integer
+  nome_cooperativa varchar(255)
+  coletas_agendadas bigint
+  visitas_programadas bigint
+  coletas_realizadas bigint
+  taxa_sucesso_percentual numeric
+}
+
+Table vw_taxa_comparecimento_cooperativas [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_cooperativas, tb_agendamentos_coletas, tb_visitas_coletas'] {
+  id_cooperativa integer
+  nome_cooperativa varchar(255)
+  visitas_programadas bigint
+  visitas_realizadas bigint
+  taxa_comparecimento_percentual numeric
+}
+
+Table vw_crescimento_usuarios [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_usuarios, tb_lkp_tipos_usuarios'] {
+  ano integer
+  mes integer
+  id_tipo_usuario integer
+  nome_tipo varchar(50)
+  novos_usuarios bigint
+}
+
+Table vw_usuarios_ativos_mensal [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_postagens, tb_rel_usuarios_cursos, tb_moradores, tb_usuarios, tb_condominios'] {
+  ano integer
+  mes integer
+  condominio_id integer
+  nome_condominio varchar(255)
+  usuarios_ativos bigint
+}
+
+Table vw_distribuicao_moradores [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_condominios, tb_moradores'] {
+  id_condominio integer
+  nome_condominio varchar(255)
+  qtd_moradores bigint
+}
+
+Table vw_desempenho_quizzes [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_quizzes, tb_aulas, tb_cursos, tb_tentativas_quiz'] {
+  id_quiz integer
+  titulo_quiz varchar(255)
+  id_aula integer
+  titulo_aula varchar(255)
+  id_curso integer
+  titulo_curso varchar(255)
+  nota_minima_aprovacao decimal(5,2)
+  ativo boolean
+  usuarios_unicos bigint
+  total_tentativas bigint
+  tentativas_concluidas bigint
+  tentativas_aprovadas bigint
+  taxa_aprovacao_percentual numeric
+  nota_media numeric
+}
+
+Table vw_denuncias_por_motivo [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_lkp_motivos_denuncia, tb_rel_votos_postagens, tb_postagens, tb_lkp_status_validacoes_postagens'] {
+  id_motivo_denuncia integer
+  motivo varchar(255)
+  ativo boolean
+  qtd_denuncias bigint
+  qtd_postagens_denunciadas bigint
+  qtd_denuncias_procedentes bigint
+  taxa_procedencia_percentual numeric
+}
+
+Table vw_dau_por_tipo_usuario [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_atividades_diarias_usuarios, tb_usuarios, tb_lkp_tipos_usuarios'] {
+  data_atividade date
+  nome_tipo varchar(50)
+  dau bigint
+  sessoes bigint
+  minutos_medios numeric
+}
+
+Table vw_retencao_coortes_mensais [headercolor: #7B61FF, note: 'VIEW | Fontes: tb_usuarios, tb_atividades_diarias_usuarios'] {
+  mes_coorte date
+  usuarios_coorte bigint
+  mes_relativo integer
+  usuarios_ativos bigint
+  taxa_retencao_percentual numeric
+}
+
+Table vw_dashboard_sindico [headercolor: #7B61FF, note: 'VIEW | 1 linha por condominio. A API filtra por sindico_usuario_id. Fontes: tb_condominios, tb_sindicos, tb_usuarios, tb_moradores, tb_postagens, tb_lkp_categorias_residuos, tb_movimentacoes_pontos, tb_tentativas_quiz, tb_quizzes'] {
+  id_condominio integer
+  nome_condominio varchar(255)
+  sindico_usuario_id integer
+  nome_sindico varchar(100)
+  total_moradores bigint
+  materiais_reciclados bigint
+  postagens_em_validacao bigint
+  postagens_aguardando_sindico bigint
+  postagens_reprovadas bigint
+  materiais_por_categoria jsonb [note: 'Array: id_categoria, categoria, cor, quantidade']
+  pontos_total bigint
+  pontos_postagens bigint
+  pontos_quizzes bigint
+  pontos_mes_atual bigint
+  tentativas_quiz_concluidas bigint
+  tentativas_quiz_aprovadas bigint
+  moradores_com_quiz bigint
+  nota_media_quizzes numeric
+  taxa_aprovacao_quizzes numeric
+  notas_por_quiz jsonb [note: 'Array: id_quiz, quiz, tentativas, aprovadas, nota_media']
+}
+
+// ----- Views de BI (ecociente_datamart.sql) - consomem apenas o Data Mart -----
+
+Table vw_bi_ranking_condominios_mensal [headercolor: #7B61FF, note: 'VIEW BI | Grao: condominio x mes. RANK e DENSE_RANK por mes. Fontes: fato_postagens, dim_tempo, dim_condominio'] {
+  ano integer
+  mes integer
+  id_condominio integer
+  nome_condominio varchar(255)
+  tipo_condominio varchar(50)
+  total_postagens bigint
+  postagens_aprovadas bigint
+  pontos_aprovados bigint
+  taxa_aprovacao_pct numeric
+  posicao_rank bigint
+  posicao_dense_rank bigint
+}
+
+Table vw_bi_postagens_acumuladas_usuario [headercolor: #7B61FF, note: 'VIEW BI | Grao: usuario x dia. Running total (SUM OVER). Sem e-mail (PII). Fontes: fato_postagens, dim_tempo, dim_usuario'] {
+  id_usuario integer
+  nome_usuario varchar(100)
+  tipo_usuario varchar(50)
+  data_completa date
+  aprovadas_no_dia bigint
+  pontos_no_dia bigint
+  aprovadas_acumuladas numeric
+  pontos_acumulados numeric
+}
+
+Table vw_bi_evolucao_coletas_mensal [headercolor: #7B61FF, note: 'VIEW BI | Grao: cooperativa x mes. Variacao mes a mes (LAG). Fontes: fato_coletas, dim_tempo, dim_cooperativa'] {
+  id_cooperativa integer
+  nome_cooperativa varchar(255)
+  ano integer
+  mes integer
+  visitas_agendadas bigint
+  coletas_realizadas bigint
+  taxa_comparecimento_pct numeric
+  realizadas_mes_anterior bigint
+  variacao_absoluta bigint
+  variacao_pct numeric
+}
+
+Table vw_bi_dau_media_movel [headercolor: #7B61FF, note: 'VIEW BI | Grao: dia. Media movel de 7 dias (AVG OVER) e LAG(7). Fontes: tb_metricas_dau, dim_tempo'] {
+  sk_tempo integer
+  data_referencia date
+  nome_dia_semana varchar(20)
+  dau integer
+  wau integer
+  mau integer
+  novos_usuarios integer
+  stickiness decimal(5,2)
+  dau_media_movel_7d numeric
+  variacao_vs_semana_anterior integer
+}
+
+TableGroup views_analiticas {
+  vw_engajamento_moradores
+  vw_desempenho_condominio
+  vw_postagens_por_categoria
+  vw_postagens_aprovadas_rejeitadas_condominio
+  vw_residuos_por_periodo
+  vw_participacao_sustentabilidade
+  vw_desempenho_coletas
+  vw_coletas_por_mes
+  vw_coletas_por_condominio
+  vw_coletas_por_cooperativa
+  vw_taxa_comparecimento_cooperativas
+  vw_crescimento_usuarios
+  vw_usuarios_ativos_mensal
+  vw_distribuicao_moradores
+  vw_desempenho_quizzes
+  vw_denuncias_por_motivo
+  vw_dau_por_tipo_usuario
+  vw_retencao_coortes_mensais
+  vw_dashboard_sindico
+}
+
+TableGroup views_bi {
+  vw_bi_ranking_condominios_mensal
+  vw_bi_postagens_acumuladas_usuario
+  vw_bi_evolucao_coletas_mensal
+  vw_bi_dau_media_movel
+}
 
 // ============================================================================
 // GRUPOS (organizacao visual no diagrama)
