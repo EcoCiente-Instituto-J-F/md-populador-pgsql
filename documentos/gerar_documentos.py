@@ -8,6 +8,8 @@ Cada documento tem uma função gerar_*() que devolve (nome_arquivo_html, html, 
 main() grava os HTML e converte todos com um único Chromium.
 """
 import argparse
+import json
+import re
 import math
 import sys
 from dataclasses import dataclass, field
@@ -762,8 +764,313 @@ def gerar_catalogo():
     return "catalogo_dados.html", doc.html("Catálogo de dados · EcoCiente", CSS), doc.numero_atual
 
 
+# ═════════════ backup e recuperação ═════════════
+CAB_BACKUP = "Backup e recuperação · EcoCiente · PostgreSQL"
+
+
+def pt(valor, casas=1):
+    """Número em pt-BR: 28.1 -> '28,1'."""
+    return f"{valor:.{casas}f}".replace(".", ",")
+
+
+def v(texto):
+    return f'<span class="v">{esc(texto)}</span>'
+
+
+def bloco_rot(texto):
+    return base.Bloco(f'<div class="rot-sec ficha-rot">{texto}</div>', ALT_ROT)
+
+
+def junto(*blocos):
+    """Blocos indivisíveis num só (um título nunca fica sozinho no fim da página)."""
+    html = "".join(f'<div style="margin-top:{base.ESPACO_BLOCOS if i else 0}px">{b.html}</div>' for i, b in enumerate(blocos))
+    return base.Bloco(html, sum(b.altura for b in blocos) + base.ESPACO_BLOCOS * (len(blocos) - 1))
+
+
+def bloco_para(html, plano, largura=980, fonte=F_CORPO, altura_linha=L_CORPO):
+    return base.Bloco(f'<p class="corpo" style="width:{largura}px">{html}</p>',
+                      alt(linhas(plano, largura, fonte), altura_linha) + 2)
+
+
+def bloco_formula(linhas_cmd, titulo=None):
+    """Comandos em .formula, num painel branco; uma linha por elemento (sem quebra automática)."""
+    for linha in linhas_cmd:
+        if len(linha) > 128:
+            raise ValueError(f"comando longo demais para uma linha da .formula: {linha[:40]}…")
+    cab = f'<div class="rot-sec ficha-rot" style="margin:0 0 6px">{esc(titulo)}</div>' if titulo else ""
+    html = (f'<div style="background:var(--creme);border-radius:10px;padding:12px 16px">{cab}'
+            f'<pre class="formula">{esc(chr(10).join(linhas_cmd))}</pre></div>')
+    return base.Bloco(html, 24 + (ALT_ROT - 8 + 6 if titulo else 0) + 17 * len(linhas_cmd))
+
+
+def bloco_passos(itens, largura=980):
+    """ol.passos; itens: [(html, texto_plano)]."""
+    html = '<ol class="passos">' + "".join(f"<li>{h}</li>" for h, _ in itens) + "</ol>"
+    altura = sum(alt(linhas(p, largura - 30, F_CORPO), L_CORPO) for _, p in itens) + 11 * (len(itens) - 1) + 2
+    return base.Bloco(html, altura)
+
+
+def tabela_simples(colunas, linhas_dados, rotulo, nome, mono=(), soma=False, a_direita=()):
+    """colunas: [(nome, largura)]; linhas_dados: [[texto, ...]] (texto simples; colunas em `mono` em JetBrains)."""
+    saida = []
+    for k, cels in enumerate(linhas_dados):
+        tds, n = "", 1
+        for (cn, w), t in zip(colunas, cels):
+            if cn in mono:
+                tds += f'<td class="mono">{esc(t)}</td>'
+                n = max(n, contar_linhas(unidades([seg(t, F_MONO_TAB, mono=True, quebra=" _/")]), w - 12))
+            else:
+                tds += f'<td class="v">{esc(t)}</td>' if cn in a_direita else f"<td>{esc(t)}</td>"
+                n = max(n, linhas(t, w - 12, F_TAB))
+        ultima = soma and k == len(linhas_dados) - 1
+        saida.append((f'<tr class="soma">{tds}</tr>' if ultima else f"<tr>{tds}</tr>",
+                      base.altura_linha_tabela(n, compacta=True)))
+    return base.TabelaPaginavel(
+        thead_html=thead_fixo(colunas, a_direita=a_direita), linhas=saida,
+        titulo_html=f'<div class="rot-sec ficha-rot">{rotulo}</div>', titulo_altura=ALT_ROT,
+        classe_tabela="compacta fixa", nome=nome, minimo_linhas=2)
+
+
+def capa_backup(med, hoje):
+    pg = re.search(r"postgres:(\d+)", med["ambiente"]).group(1)
+    meta = ["<b>EcoCiente</b> md-populador-pgsql", f"gerado em {hoje}", "scripts/backup/",
+            f"testado em PostgreSQL {pg}"]
+    return base.pagina_capa("EcoCiente · PostgreSQL", "Backup e<br>recuperação", meta, seed=71)
+
+
+def pagina_resumo_backup(med):
+    t_b, t_r = pt(med["tempo_backup_s"]), pt(med["tempo_restauracao_s"])
+    cartoes = [
+        cartao("g-rosa", "RPO", '24<span class="u">h</span>', "perda máxima de dados",
+               "No pior caso perde-se o que foi escrito desde o último dump diário.", ["premissa"]),
+        cartao("g-verde", "RTO", '1<span class="u">h</span>', "meta para voltar a operar",
+               "Criar o serviço, restaurar, conferir e trocar ECOCIENTE_DSN. A restauração em si foi medida em segundos.",
+               ["premissa"]),
+        cartao("g-azul", "Frequência", '<span class="menor">DIÁRIA</span>', "dump completo",
+               "pg_dump -Fc todo dia, e --schema-only a cada mudança de schema.", ["premissa"]),
+        cartao("g-rosa", "Retenção", "7 + 4", "diários + semanais",
+               "Configurável por ECOCIENTE_RETENCAO_DIARIOS e ECOCIENTE_RETENCAO_SEMANAIS.", ["premissa"]),
+        cartao("g-verde", "Tempos medidos", f'{t_b}<span class="u">s</span><br>{t_r}<span class="u">s</span>',
+               "backup · restauração",
+               f"Escala {med['escala_populador']}: banco de {pt(med['tamanho_banco_mb'])} MB, "
+               f"dump de {pt(med['tamanho_dump_mb'])} MB.", ["medido"]),
+    ]
+    corpo = f"""{base.abre(73, True)}
+<div class="a" style="left:60px;top:104px;width:980px"><div class="grande">O resumo em cinco números</div><p class="sub" style="margin-top:14px">Metas definidas para o projeto e os tempos de um teste real. Cada etiqueta diz qual é qual.</p></div>
+<div class="cinco">
+  {(chr(10) + "  ").join(cartoes)}
+</div>
+<div class="nao">
+  <div class="sig"><div class="rot">O que este documento não afirma</div><p>Três limites que valem para todo o documento.</p></div>
+  <ul class="lista">
+    <li>Que os tempos valham para produção: foram medidos na escala {esc(med["escala_populador"])}, num PostgreSQL local em Docker, sem rede. Contra a Aiven entram latência e o tamanho real.</li>
+    <li>Que RPO, RTO, frequência e retenção sejam SLA do provedor: são metas definidas aqui.</li>
+    <li>O que o provedor gerenciado oferece (backups automáticos, PITR) depende do plano contratado. Confira no console antes de contar com isso.</li>
+  </ul>
+</div>"""
+    return Pagina("", corpo)
+
+
+def paginas_estrategia():
+    cab = cabecalho("Estratégia", '<span class="m">Dump lógico diário, guardado fora do banco,</span> mais o que o provedor já faz.', 980)
+    cols = [("O quê", 130), ("Comando", 250), ("Quando", 230), ("Onde fica", 370)]
+    tab = tabela_simples(cols, [
+        ["Banco inteiro", "pg_dump -Fc", "diário", "backups/ecociente_AAAAMMDD_HHMMSS.dump"],
+        ["Só o schema", "pg_dump --schema-only", "a cada mudança em sql/", "….schema.sql, com o mesmo carimbo"],
+        ["Retenção", "backup.sh / backup.ps1", "depois de cada backup bem-sucedido", "7 diários + 4 semanais"],
+        ["Cópia externa", "cópia do arquivo", "diária",
+         "fora do servidor do banco: outra máquina ou armazenamento em nuvem da equipe; nunca só no mesmo serviço do banco"],
+    ], "O que é feito", "estrategia", mono=("Comando",))
+    p1 = ("Aiven e Neon fazem backups automáticos e oferecem restauração a um ponto no tempo (PITR), conforme o plano. "
+          "Mantemos o backup lógico mesmo assim, por quatro motivos.")
+    motivos = [
+        ("<b>Independe da conta.</b> Os backups do provedor em geral somem junto com o serviço; o dump fica com a equipe.",
+         "Independe da conta. Os backups do provedor em geral somem junto com o serviço; o dump fica com a equipe."),
+        ("<b>É portátil.</b> Serve entre provedores e versões: Aiven, Neon ou PostgreSQL local.",
+         "É portátil. Serve entre provedores e versões: Aiven, Neon ou PostgreSQL local."),
+        ("<b>Restaura uma tabela só,</b> sem voltar o serviço inteiro no tempo.",
+         "Restaura uma tabela só, sem voltar o serviço inteiro no tempo."),
+        ("<b>Dá para testar todo mês</b> num PostgreSQL local, sem tocar na produção.",
+         "Dá para testar todo mês num PostgreSQL local, sem tocar na produção."),
+    ]
+    return paginas_claras([cab, tab, junto(bloco_rot("Por que manter o backup lógico"), bloco_para(esc(p1), p1), bloco_passos(motivos))], seed=75)
+
+
+def paginas_fazer_backup():
+    cab = cabecalho("Como fazer backup", '<span class="m">Um comando,</span> do <span class="v">backup.sh</span> ou do <span class="v">backup.ps1</span>.', 980)
+    passos = [
+        (f'Defina {v("ECOCIENTE_DSN")} no ambiente ou no {v(".env")} (o script lê só essa linha; veja {v(".env.example")}).',
+         "Defina ECOCIENTE_DSN no ambiente ou no .env (o script lê só essa linha; veja .env.example)."),
+        (f'Tenha o {v("pg_dump")} 16 ou mais novo no PATH, ou aponte {v("PG_BIN")} para a pasta dele. A versão deve ser igual ou maior que a do servidor.',
+         "Tenha o pg_dump 16 ou mais novo no PATH, ou aponte PG_BIN para a pasta dele. A versão deve ser igual ou maior que a do servidor."),
+        ("Rode o script (comandos abaixo), da raiz do repositório.", "Rode o script (comandos abaixo), da raiz do repositório."),
+        (f'Confira a linha {v("ok:")} e as linhas {v("mantido:")} e {v("apagado:")} da retenção.',
+         "Confira a linha ok: e as linhas mantido: e apagado: da retenção."),
+        ("Copie o .dump para fora do servidor do banco.", "Copie o .dump para fora do servidor do banco."),
+    ]
+    p_erro = ("Se o pg_dump falhar, o script imprime ERRO: pg_dump falhou (código N). Nenhum backup novo foi gravado. "
+              "e sai com código 1. Não fica arquivo parcial.")
+    cols = [("Variável", 230), ("Padrão", 200), ("Para quê", 550)]
+    tab = tabela_simples(cols, [
+        ["ECOCIENTE_DSN", "(obrigatória)", "conexão com o banco; também lida da linha ECOCIENTE_DSN= do .env"],
+        ["ECOCIENTE_BACKUP_DIR", "<raiz>/backups", "pasta onde os arquivos são gravados"],
+        ["ECOCIENTE_RETENCAO_DIARIOS", "7", "quantos dumps mais novos manter; deve ser 1 ou mais"],
+        ["ECOCIENTE_RETENCAO_SEMANAIS", "4", "quantas semanas anteriores manter, com o dump mais novo de cada uma; 0 desliga"],
+        ["PG_BIN", "(PATH)", "pasta do pg_dump, se não estiver no PATH"],
+    ], "Variáveis de ambiente", "variaveis", mono=("Variável", "Padrão"))
+    return paginas_claras([
+        cab, bloco_passos(passos),
+        bloco_formula(["scripts/backup/backup.sh"], "Linux, macOS e Git Bash"),
+        bloco_formula([".\\scripts\\backup\\backup.ps1"], "Windows (PowerShell)"),
+        bloco_para(esc(p_erro), p_erro), tab,
+        junto(bloco_rot("Agendamento diário"),
+              bloco_formula(["0 2 * * * cd /caminho/md-populador-pgsql && ECOCIENTE_DSN=... scripts/backup/backup.sh"], "cron (Linux)"),
+              bloco_formula(['schtasks /Create /SC DAILY /ST 02:00 /TN "EcoCiente backup" ^',
+                             '  /TR "powershell -NoProfile -File C:\\caminho\\md-populador-pgsql\\scripts\\backup\\backup.ps1"'],
+                            "Agendador de Tarefas (Windows)")),
+    ], seed=79)
+
+
+def paginas_restaurar(med):
+    cab = cabecalho("Como restaurar", '<span class="m">Banco inteiro, uma tabela</span> ou só a conferência por contagem.', 980)
+    inteiro = [
+        ("Crie um banco novo e vazio (no serviço novo ou num PostgreSQL local).", "Crie um banco novo e vazio (no serviço novo ou num PostgreSQL local)."),
+        (f'Rode {v("restore.sh")} com o dump e a DSN do banco novo. Ele executa '
+         f'{v("pg_restore --clean --if-exists --no-owner --no-privileges --exit-on-error")}.',
+         "Rode restore.sh com o dump e a DSN do banco novo. Ele executa pg_restore --clean --if-exists --no-owner --no-privileges --exit-on-error."),
+        (f'O script recusa um destino igual a {v("ECOCIENTE_DSN")}. Para restaurar por cima de propósito, exporte {v("ECOCIENTE_ALLOW_RESET=1")}.',
+         "O script recusa um destino igual a ECOCIENTE_DSN. Para restaurar por cima de propósito, exporte ECOCIENTE_ALLOW_RESET=1."),
+        (f'Confira com {v("--comparar")} (abaixo).', "Confira com --comparar (abaixo)."),
+    ]
+    tabela_p = ("Restaurar uma tabela só (pg_restore --data-only -t). Sem --truncar, linhas que já existem colidem com a chave "
+                "primária. O --truncar não usa CASCADE: se outras tabelas referenciam a restaurada por FK, liste todas juntas "
+                "com -t. O caminho mais seguro é restaurar o dump inteiro num banco novo e copiar as linhas de lá.")
+    contagens = [[n, str(o), str(r)] for n, (o, r) in med["contagens"].items()]
+    iguais = sum(o == r for o, r in med["contagens"].values())
+    contagens.append([f"Contagens iguais: {iguais} de {len(contagens)}", "", ""])
+    tab = tabela_simples([("Tabela", 400), ("Origem", 190), ("Restaurado", 190)], contagens,
+                         "Contagens conferidas no teste", "contagens", mono=("Tabela",), soma=True,
+                         a_direita=("Origem", "Restaurado"))
+    texto_cmp = ("--comparar (no PowerShell, -Comparar) mostra origem × restaurado das 17 tabelas principais, marca "
+                 "<-- DIVERGE e sai com código 1 se algo diferir. Precisa de ECOCIENTE_DSN apontando para a origem, "
+                 "e a origem não pode ter mudado desde o backup. MEDIDO")
+    html_cmp = (f'{v("--comparar")} (no PowerShell, {v("-Comparar")}) mostra origem × restaurado das 17 tabelas principais, '
+                f'marca {v("<-- DIVERGE")} e sai com código 1 se algo diferir. Precisa de {v("ECOCIENTE_DSN")} apontando '
+                f'para a origem, e a origem não pode ter mudado desde o backup. {base.tag("medido")}')
+    return paginas_claras([
+        cab, junto(bloco_rot("Banco inteiro, num banco novo"), bloco_passos(inteiro)),
+        bloco_formula(["scripts/backup/restore.sh backups/ecociente_AAAAMMDD_HHMMSS.dump \\",
+                       '  "postgres://usuario:senha@host:5432/ecociente_restaurado?sslmode=require"'], "Linux, macOS e Git Bash"),
+        bloco_formula([".\\scripts\\backup\\restore.ps1 backups\\ecociente_AAAAMMDD_HHMMSS.dump `",
+                       '  "postgres://usuario:senha@host:5432/ecociente_restaurado?sslmode=require"'], "Windows (PowerShell)"),
+        junto(bloco_rot("Uma tabela isolada"), bloco_para(esc(tabela_p), tabela_p)),
+        bloco_formula(['scripts/backup/restore.sh -t tb_cursos [--truncar] backups/ecociente_AAAAMMDD_HHMMSS.dump "<dsn_destino>"',
+                       '.\\scripts\\backup\\restore.ps1 backups\\ecociente_AAAAMMDD_HHMMSS.dump "<dsn_destino>" -Tabela tb_cursos [-Truncar]']),
+        junto(bloco_rot("Conferência por contagem"), bloco_para(html_cmp, texto_cmp)), tab,
+    ], seed=83)
+
+
+def paginas_falhas():
+    cab = cabecalho("Recuperação de falhas", '<span class="m">Seis falhas previstas,</span> o que se vê e o que fazer.', 980)
+    cols = [("Falha", 170), ("Sintoma", 300), ("Procedimento", 510)]
+    nota = ("Nota: num banco vazio o ecociente_schema.sql atual falha com relation \"tb_recuperacoes_senha\" does not exist, "
+            "porque o índice idx_esqueci_senha_usuario_id vem antes da tabela. Enquanto o arquivo não for corrigido no repo, "
+            "mova esse CREATE INDEX para depois do CREATE TABLE tb_recuperacoes_senha numa cópia.")
+    tab = tabela_simples(cols, [
+        ["Carga do populador interrompida", "python src/main.py para no meio (queda de conexão, timeout); as tabelas ficam com contagens parciais.",
+         "O populador trunca e recarrega: rode de novo com a mesma escala e --force (ou ECOCIENTE_ALLOW_RESET=1)."],
+        ["Schema corrompido", "relation … does not exist, colunas faltando, ou a checagem de schema de python ui.py acusa diferença.",
+         "Banco novo; psql \"$ECOCIENTE_DSN\" -v ON_ERROR_STOP=1 -f sql/ecociente_schema.sql e depois -f sql/ecociente_datamart.sql, nessa ordem. Depois repopule ou restaure só os dados."],
+        ["Data Mart inconsistente", "fato_postagens e fato_coletas com números diferentes do OLTP; dashboard desatualizado.",
+         "CALL sp_carga_datamart(); (refresh completo)."],
+        ["Exclusão acidental de dados", "linhas sumiram de uma tabela.", "Restauração da tabela a partir do último dump (página \"Como restaurar\")."],
+        ["Falha na migração RPA", "a migração parou no meio ou deixou registros pela metade.",
+         "Carga transacional, tb_migracao_ids_map (mapa legado para novo, que torna a nova execução idempotente) e reconciliação do repo md-rpa-integration."],
+        ["Perda total do servidor", "serviço inacessível ou excluído.",
+         "Restauração completa a partir do dump externo num serviço novo, conferência por contagem e troca de ECOCIENTE_DSN."],
+    ], "Falha, sintoma e procedimento", "falhas")
+    return paginas_claras([cab, tab, bloco_para(esc(nota), nota, fonte=11.5, altura_linha=16.5)], seed=87)
+
+
+def paginas_checklist():
+    cab = cabecalho("Teste de restauração mensal", '<span class="m">Todo mês,</span> na primeira semana, pelo responsável pelo banco.', 980)
+    quem = "Quem executa: o responsável pelo banco (perfil DBA / Admin do catálogo de dados), com uma segunda pessoa conferindo o resultado."
+    itens = [
+        ("O último dump existe e tem menos de 24 h.", "O último dump existe e tem menos de 24 h."),
+        ("O tamanho é coerente com o do mês anterior.", "O tamanho é coerente com o do mês anterior."),
+        (f'Suba um PostgreSQL 16 local: {v("docker run --rm -d -p 15432:5432 -e POSTGRES_PASSWORD=teste postgres:16")}.',
+         "Suba um PostgreSQL 16 local: docker run --rm -d -p 15432:5432 -e POSTGRES_PASSWORD=teste postgres:16."),
+        ("Crie um banco novo e vazio nele.", "Crie um banco novo e vazio nele."),
+        (f'Faça um backup novo e rode {v("restore.sh --comparar")} logo em seguida, para a origem não ter mudado.',
+         "Faça um backup novo e rode restore.sh --comparar logo em seguida, para a origem não ter mudado."),
+        ("Confira que as contagens são iguais (sem linha DIVERGE).", "Confira que as contagens são iguais (sem linha DIVERGE)."),
+        (f'Aplique o {v(".schema.sql")} num banco vazio e confira que não dá erro.',
+         "Aplique o .schema.sql num banco vazio e confira que não dá erro."),
+        ("Anote os tempos de backup e de restauração e compare com o mês anterior.",
+         "Anote os tempos de backup e de restauração e compare com o mês anterior."),
+        ("Apague o banco de teste e confira que a retenção mantém 7 + 4 arquivos.",
+         "Apague o banco de teste e confira que a retenção mantém 7 + 4 arquivos."),
+    ]
+    reg = tabela_simples([("Data", 160), ("Responsável", 300), ("Tempo de restauração", 280), ("Contagens ok?", 240)],
+                         [["\u00a0", "", "", ""]] * 4, "Registro", "registro")
+    return paginas_claras([cab, bloco_para(esc(quem), quem), bloco_passos(itens), reg], seed=91)
+
+
+def pagina_como_medimos(med):
+    amb = med["ambiente"].split(" (")[0].replace("Docker ", "")
+    passos = [
+        f"Contêiner {amb}.",
+        "Schema (com a correção numa cópia, ver a nota da página de falhas) e depois o Data Mart.",
+        f"Populador com --escala {med['escala_populador']} --force: {pt(med['tempo_populador_s'])} s.",
+        "CALL sp_carga_datamart();",
+        f"backup.sh dentro do contêiner: {pt(med['tempo_backup_s'])} s, dump de {pt(med['tamanho_dump_mb'])} MB.",
+        f"restore.sh --comparar num banco novo (ecociente_restaurado): {pt(med['tempo_restauracao_s'])} s, 17 de 17 contagens iguais.",
+    ]
+    limites = [
+        f"Escala {med['escala_populador']}, uma máquina local, uma execução, sem rede.",
+        f"O banco tem {pt(med['tamanho_banco_mb'])} MB; o de produção será maior e os tempos crescem com ele.",
+        "O tempo de restauração é só a etapa do pg_restore; o script inteiro, com as contagens, leva mais.",
+        "Os scripts .ps1 foram validados de ponta a ponta no PowerShell 7 (em contêiner); no Windows PowerShell 5.1 só até a checagem do pg_dump.",
+    ]
+    corpo = f"""{base.abre(95, True)}
+<div class="a c1 l1"><div class="grande">Como medimos</div><p class="sub" style="margin-top:14px"><span class="m">Um teste real,</span> num PostgreSQL 16 local.</p></div>
+<div class="a c2 l1 corpo"><div class="rot-sec ficha-rot">Como o teste foi feito</div><ol class="passos">{"".join(f"<li>{esc(p)}</li>" for p in passos)}</ol></div>
+<div class="a c3 l1 corpo"><div class="rot-sec ficha-rot">Limitações</div><ul class="lista">{"".join(f"<li>{esc(p)}</li>" for p in limites)}</ul></div>"""
+    return Pagina("", corpo)
+
+
+def pagina_final_backup():
+    itens = [("scripts/backup/backup.sh", "e backup.ps1: geram o dump e o .schema.sql"),
+             ("scripts/backup/restore.sh", "e restore.ps1: restauram e conferem"),
+             ("backups/", "pasta dos dumps (ignorada pelo git)"),
+             ("sql/ecociente_schema.sql", "e ecociente_datamart.sql: o schema, nessa ordem"),
+             ("documentos/catalogo_dados.pdf", "o catálogo de dados"),
+             ("python documentos/gerar_documentos.py", "regera este documento")]
+    lis = "".join(f'<li><span class="v">{esc(a)}</span> {esc(b)}</li>' for a, b in itens)
+    direita = ('<div class="vidro" style="left:600px;top:130px;width:440px">\n  <h3>Arquivos</h3>\n'
+               f'  <ul class="lista">{lis}</ul>\n</div>')
+    return Pagina("escura", base.pagina_escura("Onde está cada coisa", "Tudo sai do repositório: scripts, schema e este documento.",
+                                               direita, seed=99, arvores=arvores_lado(7)))
+
+
+def gerar_backup():
+    med = json.loads((AQUI / "dados" / "medicoes_backup.json").read_text(encoding="utf-8"))
+    paginas = [pagina_resumo_backup(med)]
+    paginas += paginas_estrategia()
+    paginas += paginas_fazer_backup()
+    paginas += paginas_restaurar(med)
+    paginas += paginas_falhas()
+    paginas += paginas_checklist()
+    paginas += [pagina_como_medimos(med), pagina_final_backup()]
+    doc = base.Documento(CAB_BACKUP)
+    doc.capa(capa_backup(med, date.today().strftime("%d/%m/%Y")))
+    for p in paginas:
+        doc.pagina(p.classes, p.corpo)
+    return "backup_e_recuperacao.html", doc.html("Backup e recuperação · EcoCiente", CSS), doc.numero_atual
+
+
 # ═════════════ linha de comando ═════════════
-DOCUMENTOS = [gerar_catalogo]
+DOCUMENTOS = [gerar_catalogo, gerar_backup]
 
 
 def main(argv=None):
