@@ -415,7 +415,7 @@ def paginas_claras(blocos, seed):
 # ═════════════ catálogo: páginas ═════════════
 def capa_catalogo(camadas, hoje):
     meta = ["<b>EcoCiente</b> PostgreSQL 14+", f"gerado em {hoje}",
-            f"{len(todas_tabelas(camadas))} tabelas · {len(camadas)} camadas", "fonte: catalogo_atual.html + sql/"]
+            f"{len(todas_tabelas(camadas))} tabelas · {len(camadas)} camadas", "fonte: dados/catalogo.json + sql/"]
     return base.pagina_capa("EcoCiente · PostgreSQL", "Catálogo<br>de dados", meta, seed=17)
 
 
@@ -506,7 +506,8 @@ def pagina_resumo(camadas, div):
     n_schema = div["totais"]["schema"]
     cartoes = [
         cartao("g-rosa", "Tabelas", str(n_tab), f"no catálogo · {n_cam} camadas",
-               f"O schema SQL tem {n_schema}: <b>{len(fora)}</b> ficam fora do catálogo."),
+               (f"O schema SQL tem {n_schema}: <b>{len(fora)}</b> ficam fora do catálogo." if fora
+                else f"Cobre as {n_schema} tabelas do schema SQL e do Data Mart.")),
         cartao("g-verde", "Colunas", str(n_col), f"nas {n_tab} tabelas",
                "Lidas do schema SQL, porque o catálogo atual não documenta colunas."),
         cartao("g-azul", "Colunas PII", str(len(pii)), f"em {n_tab_pii} tabelas",
@@ -518,6 +519,10 @@ def pagina_resumo(camadas, div):
                "Contadas por coluna. O destino de cada uma está na ficha da tabela."),
     ]
     nomes_fora = ", ".join(f'<span class="v">{esc(n)}</span>' for n in fora)
+    item_cobertura = (
+        f'<li>Que cubra todo o schema: {len(fora)} tabelas ficam fora.<span style="display:block;margin-top:4px;'
+        f'font-size:10.5px;line-height:14px">{nomes_fora}.</span></li>' if fora else
+        "<li>Nada sobre o conteúdo das tabelas: o catálogo descreve a estrutura, as regras e o acesso, não os dados.</li>")
     corpo = f"""{base.abre(37, True)}
 <div class="a" style="left:60px;top:104px;width:980px"><div class="grande">O resumo em cinco números</div><p class="sub" style="margin-top:14px">Cada cartão é calculado do catálogo e do schema SQL. As páginas seguintes detalham tabela por tabela.</p></div>
 <div class="cinco">
@@ -527,8 +532,8 @@ def pagina_resumo(camadas, div):
   <div class="sig"><div class="rot">O que este catálogo não afirma</div><p>Três limites que valem para todo o documento.</p></div>
   <ul class="lista">
     <li>Que nível de acesso e PII sejam oficiais: os dois são derivados por regra fixa, das permissões do catálogo e do nome da coluna.</li>
-    <li>Nada sobre colunas a partir do HTML: o catálogo atual não documenta colunas; tipos, chaves e descrições vêm do schema SQL.</li>
-    <li>Que cubra todo o schema: {len(fora)} tabelas ficam fora.<span style="display:block;margin-top:4px;font-size:10.5px;line-height:14px">{nomes_fora}.</span></li>
+    <li>Colunas, tipos, chaves e descrições de coluna vêm do schema SQL, não do texto do catálogo.</li>
+    {item_cobertura}
   </ul>
 </div>"""
     return Pagina("", corpo)
@@ -709,8 +714,8 @@ def paginas_pii(camadas, pagina_de):
 
 def pagina_final():
     passos = [
-        'Se o HTML de origem mudar: <span class="v">python documentos/extrair_catalogo.py</span>. '
-        'Reextrai <span class="v">dados/catalogo.json</span> e lista as divergências com o schema.',
+        'Descrições, permissões e regras de negócio ficam em <span class="v">dados/catalogo.json</span>; '
+        'tipos, chaves e colunas vêm de <span class="v">sql/</span>.',
         '<span class="v">python documentos/gerar_documentos.py</span> gera o HTML e o PDF; '
         'com <span class="v">--sem-pdf</span>, só o HTML.',
         'Dependências: <span class="v">pip install -r requirements.txt</span> e '
@@ -723,7 +728,7 @@ def pagina_final():
                'scripts em <span class="v">scripts/backup/</span>: <span class="v">backup.sh</span>, '
                '<span class="v">restore.sh</span>, <span class="v">backup.ps1</span> e '
                '<span class="v">restore.ps1</span>.</p>\n</div>')
-    lead = "Comandos a partir da raiz do repositório. O catálogo sai sempre do HTML de origem e do schema SQL."
+    lead = "Comandos a partir da raiz do repositório. O catálogo sai sempre de dados/catalogo.json e do schema SQL."
     return Pagina("escura", base.pagina_escura("Para regerar este catálogo", lead, direita, seed=53,
                                                arvores=arvores_lado(12)))
 
@@ -863,7 +868,7 @@ def pagina_resumo_backup(med):
 <div class="nao">
   <div class="sig"><div class="rot">O que este documento não afirma</div><p>Três limites que valem para todo o documento.</p></div>
   <ul class="lista">
-    <li>Que os tempos valham para produção: foram medidos na escala {esc(med["escala_populador"])}, num PostgreSQL local em Docker, sem rede. Contra a Aiven entram latência e o tamanho real.</li>
+    <li>Que os tempos valham para produção: foram medidos na escala {esc(med["escala_populador"])}, num PostgreSQL local em Docker, sem rede. Contra o Neon entram latência e o tamanho real.</li>
     <li>Que RPO, RTO, frequência e retenção sejam SLA do provedor: são metas definidas aqui.</li>
     <li>O que o provedor gerenciado oferece (backups automáticos, PITR) depende do plano contratado. Confira no console antes de contar com isso.</li>
   </ul>
@@ -881,13 +886,14 @@ def paginas_estrategia():
         ["Cópia externa", "cópia do arquivo", "diária",
          "fora do servidor do banco: outra máquina ou armazenamento em nuvem da equipe; nunca só no mesmo serviço do banco"],
     ], "O que é feito", "estrategia", mono=("Comando",))
-    p1 = ("Aiven e Neon fazem backups automáticos e oferecem restauração a um ponto no tempo (PITR), conforme o plano. "
+    p1 = ("O sistema aceita Neon e Aiven (a conexão é uma DSN PostgreSQL comum); o ambiente de referência é o Neon, plano free, com "
+          "limite de 1 GB. Os recursos de recuperação do provedor dependem do plano; o console diz o que o free cobre. "
           "Mantemos o backup lógico mesmo assim, por quatro motivos.")
     motivos = [
         ("<b>Independe da conta.</b> Os backups do provedor em geral somem junto com o serviço; o dump fica com a equipe.",
          "Independe da conta. Os backups do provedor em geral somem junto com o serviço; o dump fica com a equipe."),
-        ("<b>É portátil.</b> Serve entre provedores e versões: Aiven, Neon ou PostgreSQL local.",
-         "É portátil. Serve entre provedores e versões: Aiven, Neon ou PostgreSQL local."),
+        ("<b>É portátil.</b> Serve entre provedores e versões: Neon, Aiven ou PostgreSQL local.",
+         "É portátil. Serve entre provedores e versões: Neon, Aiven ou PostgreSQL local."),
         ("<b>Restaura uma tabela só,</b> sem voltar o serviço inteiro no tempo.",
          "Restaura uma tabela só, sem voltar o serviço inteiro no tempo."),
         ("<b>Dá para testar todo mês</b> num PostgreSQL local, sem tocar na produção.",
@@ -973,9 +979,8 @@ def paginas_restaurar(med):
 def paginas_falhas():
     cab = cabecalho("Recuperação de falhas", '<span class="m">Seis falhas previstas,</span> o que se vê e o que fazer.', 980)
     cols = [("Falha", 170), ("Sintoma", 300), ("Procedimento", 510)]
-    nota = ("Nota: num banco vazio o ecociente_schema.sql atual falha com relation \"tb_recuperacoes_senha\" does not exist, "
-            "porque o índice idx_esqueci_senha_usuario_id vem antes da tabela. Enquanto o arquivo não for corrigido no repo, "
-            "mova esse CREATE INDEX para depois do CREATE TABLE tb_recuperacoes_senha numa cópia.")
+    nota = ("Nota: o ecociente_schema.sql aplica direto num banco vazio. Antes, o índice idx_esqueci_senha_usuario_id vinha antes do "
+            "CREATE TABLE tb_recuperacoes_senha e o script falhava; o índice foi movido para depois da tabela.")
     tab = tabela_simples(cols, [
         ["Carga do populador interrompida", "python src/main.py para no meio (queda de conexão, timeout); as tabelas ficam com contagens parciais.",
          "O populador trunca e recarrega: rode de novo com a mesma escala e --force (ou ECOCIENTE_ALLOW_RESET=1)."],
@@ -1020,7 +1025,7 @@ def pagina_como_medimos(med):
     amb = med["ambiente"].split(" (")[0].replace("Docker ", "")
     passos = [
         f"Contêiner {amb}.",
-        "Schema (com a correção numa cópia, ver a nota da página de falhas) e depois o Data Mart.",
+        "Schema e depois o Data Mart (o teste foi feito com o índice corrigido numa cópia; o arquivo do repositório já tem a correção).",
         f"Populador com --escala {med['escala_populador']} --force: {pt(med['tempo_populador_s'])} s.",
         "CALL sp_carga_datamart();",
         f"backup.sh dentro do contêiner: {pt(med['tempo_backup_s'])} s, dump de {pt(med['tamanho_dump_mb'])} MB.",

@@ -440,6 +440,7 @@ class _Tabela:
         self.pk: list[str] = []
         self.uks: list[list[str]] = []
         self.fks: list[dict] = []
+        self.herdadas: list[tuple] = []  # (tabela mae, coluna) vindas de INHERITS
 
     def coluna(self, nome):
         for c in self.colunas:
@@ -604,6 +605,16 @@ def _criar_tabela(cmd: str, toks: list[_Tok], arquivo: str, tabelas: dict):
     corpo = toks[k].val
     base = toks[k].ini + 1
     tab = _Tabela(nome, arquivo)
+    # INHERITS (mae, ...): a filha recebe as colunas da mae (nome, tipo, nulo, default), mas nao PK, FK nem UNIQUE
+    pais = []
+    for m in range(k + 1, len(toks) - 1):
+        if toks[m].kw() == "INHERITS" and toks[m + 1].tipo == "p":
+            pais = _nomes(toks[m + 1].val)
+    for pai in pais:
+        if pai in tabelas:
+            for c in tabelas[pai].colunas:
+                tab.colunas.append({**c, "pk": False, "uk": False, "fk": None, "comentario": None})
+                tab.herdadas.append((pai, c["nome"]))
     for item in _dividir_virgulas(_tokenizar(corpo)):
         if not item:
             continue
@@ -747,6 +758,11 @@ def ler_schema(caminhos: list[Path] | None = None) -> dict[str, dict]:
             c = t.coluna(ident[-1]) if t else None
             if c is not None:
                 c["comentario"] = texto
+    for t in tabelas.values():  # a filha herda tambem o comentario da coluna da mae, se nao tem o proprio
+        for pai, nome_col in t.herdadas:
+            c, cp = t.coluna(nome_col), tabelas[pai].coluna(nome_col)
+            if c is not None and cp is not None and c["comentario"] is None:
+                c["comentario"] = cp["comentario"]
     return {nome: t.finalizar(tabelas) for nome, t in tabelas.items()}
 
 
