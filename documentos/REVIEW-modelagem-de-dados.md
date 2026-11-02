@@ -330,6 +330,9 @@ Um agendamento tem um **solicitante** (`solicitado_por_usuario_id`) e um **lado 
 - **Índice do schema.** `sql/ecociente_schema.sql` falhava em banco vazio, porque `idx_esqueci_senha_usuario_id` vinha antes do `CREATE TABLE tb_recuperacoes_senha`. O índice foi movido para logo depois da tabela, e o schema aplica direto.
 - **Auditoria com `INHERITS`.** Troca do modelo por FK 1:1 pela herança nativa, validada com o populador, o backup e a restauração.
 - **Catálogo completo.** As 8 tabelas que faltavam entraram, com as regras de agendamento e de chat.
+- **Populador: cooperativa e condomínio pela cidade.** Cada cooperativa e o seu ponto de coleta ficam numa cidade, e cada condomínio na cidade de uma cooperativa. Agendamentos e conversas só acontecem entre pares da mesma cidade (no teste da escala leve: 46 de 46 agendamentos, 7 de 7 conversas e 10 de 10 pontos de coleta).
+- **Populador: oscilações múltiplas de pontuação.** O ledger passou a reproduzir os votos de cada postagem em ordem, com a regra da procedure (saldo `<= -5` desativa, `>= 0` reativa), e registra um `ESTORNO` por queda e uma `RESTAURACAO` por volta. Cerca de 4% das postagens têm votação disputada e oscilam mais de uma vez (no teste: 35 postagens com 2 estornos, 15 delas com 2 restaurações; 0 chaves de idempotência repetidas).
+- **Teste de schema.** `src/tests/test_schema.py` esperava 49 tabelas e 301 colunas; o schema tem 50 tabelas e 300 colunas (as filhas da auditoria só contam as colunas próprias). Os 4 testes de `src/tests` passam.
 - **Textos do catálogo defasados.** As observações das 3 filhas de auditoria passaram a descrever a herança com `INHERITS`, e duas regras que falavam em exclusão "em cascata" (condomínio e curso) foram corrigidas, porque o schema não usa `ON DELETE CASCADE`.
 
 ### Veredito

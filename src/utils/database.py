@@ -37,6 +37,9 @@ USUARIOS_POR_COMERCIAL      = (25, 45)
 
 PONTOS_COLETA_POR_COOPERATIVA = (2, 5)
 VOTOS_POR_POSTAGEM            = (2, 9)
+POLEMICAS_PCT                 = 4          # % das postagens com votação disputada (a pontuação oscila mais de uma vez)
+VOTOS_POR_POLEMICA            = (14, 24)
+CICLOS_POR_POLEMICA           = (2, 2, 3)  # quantas vezes a pontuação cai (-5) e volta (>= 0)
 NOTIFICACOES_POR_USUARIO      = (4, 15)
 AGENDAMENTOS_POR_CONDOMINIO   = (4, 8)
 VISITAS_POR_AGENDAMENTO       = (3, 8)
@@ -393,8 +396,8 @@ def popular_motivos_denuncia(cur):
 # 2. ENDEREÇOS E USUÁRIOS (+ SUBTIPOS DE HERANÇA)
 # ==============================================================================
 
-def criar_endereco(cur):
-    uf, cidade, cep, rua, numero = fk.address_tuple()
+def criar_endereco(cur, cidade=None):
+    uf, cidade, cep, rua, numero = fk.address_tuple(cidade)
     return fetch_id(
         cur,
         """INSERT INTO tb_enderecos
@@ -483,8 +486,8 @@ def proximo_codigo_acesso():
     return fk.codigo_acesso(_codigo_acesso_seq)
 
 
-def criar_condominio(cur, tipo_condominio_id, sindico_id, nome_fantasia, comercial=False):
-    endereco_id  = criar_endereco(cur)
+def criar_condominio(cur, tipo_condominio_id, sindico_id, nome_fantasia, comercial=False, cidade=None):
+    endereco_id  = criar_endereco(cur, cidade)
     cnpj         = fk.cnpj() if comercial else (fk.cnpj() if fk.boolean(20) else None)
     codigo_acesso = proximo_codigo_acesso()
     ativo        = fk.boolean(92)
@@ -574,10 +577,11 @@ def recalcular_trust_scores(cur):
 # 4. COOPERATIVAS, PONTOS DE COLETA, CATEGORIAS
 # ==============================================================================
 
-def criar_cooperativa(cur, usuario_id):
+def criar_cooperativa(cur, usuario_id, cidade=None):
     """Retorna (cooperativa_id, nome, qualidade). `qualidade` (0.55–0.97) é
-    latente: move taxa de comparecimento e nota das avaliações da cooperativa."""
-    endereco_id = criar_endereco(cur)
+    latente: move taxa de comparecimento e nota das avaliações da cooperativa.
+    `cidade` fixa a cidade do endereço (a parceria com condomínios é pela cidade)."""
+    endereco_id = criar_endereco(cur, cidade)
     nome        = fk.company()
     cooperativa_id = fetch_id(
         cur,
@@ -594,8 +598,8 @@ def criar_cooperativa(cur, usuario_id):
     return cooperativa_id, nome, round(rng.uniform(0.55, 0.97), 2)
 
 
-def criar_ponto_coleta(cur, cooperativa_id, nome_cooperativa):
-    endereco_id = criar_endereco(cur)
+def criar_ponto_coleta(cur, cooperativa_id, nome_cooperativa, cidade=None):
+    endereco_id = criar_endereco(cur, cidade)
     nome_ponto  = f"Ecoponto {nome_cooperativa} - {fk.street_name()}"
     return fetch_id(
         cur,
@@ -699,6 +703,7 @@ def gerar_postagens(cur, ocupantes, votantes_por_condominio, categorias,
     )
 
     votos = []
+    ciclos_polemica = {}  # postagem_id -> ciclos (queda e volta) que a votação disputada deve fazer
     for postagem_id, hash_foto in linhas:
         dono, condominio_id, data_postagem, aprovar = meta[hash_foto]
         candidatos = [
@@ -707,7 +712,14 @@ def gerar_postagens(cur, ocupantes, votantes_por_condominio, categorias,
         ]
         if not candidatos:
             continue
-        qtd = min(rng.randint(*VOTOS_POR_POSTAGEM), len(candidatos))
+        # votação disputada: a pontuação cai a -5 e volta a >= 0 mais de uma vez dentro da janela
+        # (precisa de votantes suficientes para sustentar os ciclos)
+        polemica = len(candidatos) >= VOTOS_POR_POLEMICA[0] and fk.boolean(POLEMICAS_PCT)
+        if polemica:
+            ciclos_polemica[postagem_id] = rng.choice(CICLOS_POR_POLEMICA)
+            qtd = min(rng.randint(*VOTOS_POR_POLEMICA), len(candidatos))
+        else:
+            qtd = min(rng.randint(*VOTOS_POR_POSTAGEM), len(candidatos))
         votantes = amostra_ponderada(
             candidatos, [PERFIS[USUARIOS[v]["perfil"]]["peso_voto"] for v in candidatos], qtd
         )
@@ -715,11 +727,15 @@ def gerar_postagens(cur, ocupantes, votantes_por_condominio, categorias,
         for usuario_id, minuto in zip(votantes, minutos):
             segue = fk.boolean(93)
             tipo = "aprovar" if aprovar == segue else "denunciar"
+            motivo = fk.random_element(motivos_denuncia_ids)
+            if polemica:
+                tipo = "aprovar"  # reserva: o tipo real é decidido no servidor, pelo estado da pontuação
             votos.append([
                 postagem_id, usuario_id, tipo,
-                fk.random_element(motivos_denuncia_ids) if tipo == "denunciar" else None,
+                motivo if tipo == "denunciar" else None,
                 fk.sentence(6) if fk.boolean(25) else None,
                 min(data_postagem + timedelta(minutes=minuto), AGORA),
+                polemica, motivo,
             ])
 
     votos.sort(key=lambda v: (v[0], v[5]))
@@ -728,8 +744,14 @@ def gerar_postagens(cur, ocupantes, votantes_por_condominio, categorias,
            CREATE TEMP TABLE tmp_votos (
                ordem INTEGER PRIMARY KEY, postagem_id INTEGER, usuario_id INTEGER,
                tipo_voto VARCHAR(20), motivo_denuncia_id INTEGER,
-               comentario VARCHAR(255), votado_em TIMESTAMPTZ)"""
+               comentario VARCHAR(255), votado_em TIMESTAMPTZ,
+               polemica BOOLEAN, motivo_alt INTEGER);
+           DROP TABLE IF EXISTS tmp_polemicas;
+           CREATE TEMP TABLE tmp_polemicas (postagem_id INTEGER PRIMARY KEY, ciclos INTEGER, voltas INTEGER DEFAULT 0)"""
     )
+    if ciclos_polemica:
+        execute_values(cur, "INSERT INTO tmp_polemicas (postagem_id, ciclos) VALUES %s",
+                       list(ciclos_polemica.items()))
     execute_values(cur, "INSERT INTO tmp_votos VALUES %s",
                    [[i] + v for i, v in enumerate(votos)], page_size=5000)
     lote = 5000
@@ -737,12 +759,39 @@ def gerar_postagens(cur, ocupantes, votantes_por_condominio, categorias,
         print(f"      votos {ini + 1}-{min(ini + lote, len(votos))} de {len(votos)}", flush=True)
         cur.execute(
             f"""DO $$
-                DECLARE r RECORD;
+                DECLARE
+                    r RECORD;
+                    v_tipo VARCHAR; v_motivo INTEGER;
+                    v_ativa_antes BOOLEAN; v_ativa_depois BOOLEAN;
                 BEGIN
                     FOR r IN SELECT * FROM tmp_votos
                               WHERE ordem >= {ini} AND ordem < {ini + lote} ORDER BY ordem LOOP
-                        CALL sp_processar_voto_postagem(r.postagem_id, r.usuario_id, r.tipo_voto,
-                                                        r.motivo_denuncia_id, r.comentario);
+                        v_tipo := r.tipo_voto;
+                        v_motivo := r.motivo_denuncia_id;
+                        v_ativa_antes := NULL;
+                        IF r.polemica THEN
+                            SELECT pontuacao_ativa INTO v_ativa_antes
+                              FROM tb_postagens WHERE id_postagem = r.postagem_id;
+                            -- enquanto faltam ciclos: pontuação ativa -> denuncia (derruba);
+                            -- pontuação caída -> aprova (recupera). Depois, segue o voto reservado.
+                            IF (SELECT voltas < ciclos FROM tmp_polemicas WHERE postagem_id = r.postagem_id) THEN
+                                IF v_ativa_antes THEN
+                                    v_tipo := 'denunciar'; v_motivo := r.motivo_alt;
+                                ELSE
+                                    v_tipo := 'aprovar'; v_motivo := NULL;
+                                END IF;
+                            END IF;
+                        END IF;
+                        CALL sp_processar_voto_postagem(r.postagem_id, r.usuario_id, v_tipo,
+                                                        v_motivo, r.comentario);
+                        IF r.polemica THEN
+                            SELECT pontuacao_ativa INTO v_ativa_depois
+                              FROM tb_postagens WHERE id_postagem = r.postagem_id;
+                            IF v_ativa_depois AND NOT v_ativa_antes THEN
+                                UPDATE tmp_polemicas SET voltas = voltas + 1
+                                 WHERE postagem_id = r.postagem_id;
+                            END IF;
+                        END IF;
                     END LOOP;
                 END $$"""
         )
@@ -752,7 +801,8 @@ def gerar_postagens(cur, ocupantes, votantes_por_condominio, categorias,
               SET votado_em = t.votado_em
              FROM tmp_votos t
             WHERE v.postagem_id = t.postagem_id AND v.usuario_id = t.usuario_id;
-           DROP TABLE tmp_votos"""
+           DROP TABLE tmp_votos;
+           DROP TABLE tmp_polemicas"""
     )
     return len(postagens), len(votos)
 
@@ -810,8 +860,10 @@ def registrar_ledger_pontos(cur, seed):
     Popula tb_movimentacoes_pontos como a API faria:
       - CREDITO provisório na postagem, valor de fn_pontos_disponiveis_postagem
         (respeita o teto diário -- com teto estourado não há crédito);
-      - ESTORNO quando a pontuação ficou inativa (saldo <= -5 / reprovada);
-      - RESTAURACAO quando caiu e depois voltou a ativa;
+      - ESTORNO a cada vez que a pontuação ficou inativa (saldo <= -5) e RESTAURACAO a cada
+        vez que voltou a ativa (saldo >= 0), reproduzindo os votos em ordem, como a procedure;
+        uma postagem pode oscilar várias vezes (chaves :ESTORNO:n e :RESTAURACAO:n). Se o
+        encerramento ou a decisão manual deixou o estado diferente, um último evento acerta;
       - CREDITO de quiz na 1a tentativa aprovada de cada usuário x quiz.
     Só postagens já resolvidas são reconciliadas; as abertas mantêm a flag
     pontuacao_reconciliacao_pendente. ~3% dos eventos recentes ficam sem
@@ -835,30 +887,65 @@ def registrar_ledger_pontos(cur, seed):
                END LOOP;
            END $$;
 
-           INSERT INTO tb_movimentacoes_pontos
-               (usuario_id, condominio_id, torre_id, categoria_id, origem_tipo, postagem_id,
-                tipo_movimentacao, pontos, movimentacao_referencia_id, idempotency_key, ocorrido_em)
-           SELECT m.usuario_id, m.condominio_id, m.torre_id, m.categoria_id, 'POSTAGEM', m.postagem_id,
-                  'ESTORNO', m.pontos, m.id_movimentacao,
-                  'POSTAGEM:' || m.postagem_id || ':ESTORNO:1',
-                  LEAST(p.data_postagem + INTERVAL '12 hours', p.resolvido_em)
-             FROM tb_movimentacoes_pontos m
-             JOIN tb_postagens p ON p.id_postagem = m.postagem_id
-            WHERE m.tipo_movimentacao = 'CREDITO'
-              AND p.resolvido_em IS NOT NULL
-              AND (p.pontuacao_ativa = FALSE OR p.pontuacao_reconciliacao_pendente);
-
-           INSERT INTO tb_movimentacoes_pontos
-               (usuario_id, condominio_id, torre_id, categoria_id, origem_tipo, postagem_id,
-                tipo_movimentacao, pontos, movimentacao_referencia_id, idempotency_key, ocorrido_em)
-           SELECT m.usuario_id, m.condominio_id, m.torre_id, m.categoria_id, 'POSTAGEM', m.postagem_id,
-                  'RESTAURACAO', m.pontos, m.id_movimentacao,
-                  'POSTAGEM:' || m.postagem_id || ':RESTAURACAO:1', p.resolvido_em
-             FROM tb_movimentacoes_pontos m
-             JOIN tb_postagens p ON p.id_postagem = m.postagem_id
-            WHERE m.tipo_movimentacao = 'CREDITO'
-              AND p.resolvido_em IS NOT NULL
-              AND p.pontuacao_ativa AND p.pontuacao_reconciliacao_pendente;
+           DO $$
+           DECLARE
+               p RECORD; v RECORD;
+               v_saldo INTEGER; v_ativa BOOLEAN; n_estornos INTEGER; n_restauracoes INTEGER;
+           BEGIN
+               -- Reproduz os votos de cada postagem já resolvida, em ordem, com a regra da procedure
+               -- (saldo <= -5 desativa; saldo >= 0 reativa): cada descida gera um ESTORNO e cada
+               -- subida uma RESTAURACAO, na hora do voto. Por isso uma postagem pode oscilar várias vezes.
+               FOR p IN SELECT m.id_movimentacao, m.usuario_id, m.condominio_id, m.torre_id, m.categoria_id,
+                               m.postagem_id, m.pontos, po.resolvido_em, po.pontuacao_ativa
+                          FROM tb_movimentacoes_pontos m
+                          JOIN tb_postagens po ON po.id_postagem = m.postagem_id
+                         WHERE m.tipo_movimentacao = 'CREDITO' AND m.origem_tipo = 'POSTAGEM'
+                           AND po.resolvido_em IS NOT NULL
+                         ORDER BY m.postagem_id LOOP
+                   v_saldo := 0; v_ativa := TRUE; n_estornos := 0; n_restauracoes := 0;
+                   FOR v IN SELECT vp.votado_em, vp.peso_aplicado, tv.nome_tipo
+                              FROM tb_rel_votos_postagens vp
+                              JOIN tb_lkp_tipos_votos_postagens tv ON tv.id_tipo_voto = vp.tipo_voto_id
+                             WHERE vp.postagem_id = p.postagem_id
+                             ORDER BY vp.votado_em, vp.id_voto LOOP
+                       v_saldo := v_saldo + CASE WHEN v.nome_tipo = 'aprovar' THEN v.peso_aplicado
+                                                 ELSE -v.peso_aplicado END;
+                       IF v_ativa AND v_saldo <= -5 THEN
+                           v_ativa := FALSE; n_estornos := n_estornos + 1;
+                           INSERT INTO tb_movimentacoes_pontos
+                               (usuario_id, condominio_id, torre_id, categoria_id, origem_tipo, postagem_id,
+                                tipo_movimentacao, pontos, movimentacao_referencia_id, idempotency_key, ocorrido_em)
+                           VALUES (p.usuario_id, p.condominio_id, p.torre_id, p.categoria_id, 'POSTAGEM',
+                                   p.postagem_id, 'ESTORNO', p.pontos, p.id_movimentacao,
+                                   'POSTAGEM:' || p.postagem_id || ':ESTORNO:' || n_estornos, v.votado_em);
+                       ELSIF NOT v_ativa AND v_saldo >= 0 THEN
+                           v_ativa := TRUE; n_restauracoes := n_restauracoes + 1;
+                           INSERT INTO tb_movimentacoes_pontos
+                               (usuario_id, condominio_id, torre_id, categoria_id, origem_tipo, postagem_id,
+                                tipo_movimentacao, pontos, movimentacao_referencia_id, idempotency_key, ocorrido_em)
+                           VALUES (p.usuario_id, p.condominio_id, p.torre_id, p.categoria_id, 'POSTAGEM',
+                                   p.postagem_id, 'RESTAURACAO', p.pontos, p.id_movimentacao,
+                                   'POSTAGEM:' || p.postagem_id || ':RESTAURACAO:' || n_restauracoes, v.votado_em);
+                       END IF;
+                   END LOOP;
+                   -- o encerramento da janela ou a decisão manual pode ter deixado o estado diferente
+                   IF v_ativa AND NOT p.pontuacao_ativa THEN
+                       INSERT INTO tb_movimentacoes_pontos
+                           (usuario_id, condominio_id, torre_id, categoria_id, origem_tipo, postagem_id,
+                            tipo_movimentacao, pontos, movimentacao_referencia_id, idempotency_key, ocorrido_em)
+                       VALUES (p.usuario_id, p.condominio_id, p.torre_id, p.categoria_id, 'POSTAGEM',
+                               p.postagem_id, 'ESTORNO', p.pontos, p.id_movimentacao,
+                               'POSTAGEM:' || p.postagem_id || ':ESTORNO:' || (n_estornos + 1), p.resolvido_em);
+                   ELSIF NOT v_ativa AND p.pontuacao_ativa THEN
+                       INSERT INTO tb_movimentacoes_pontos
+                           (usuario_id, condominio_id, torre_id, categoria_id, origem_tipo, postagem_id,
+                            tipo_movimentacao, pontos, movimentacao_referencia_id, idempotency_key, ocorrido_em)
+                       VALUES (p.usuario_id, p.condominio_id, p.torre_id, p.categoria_id, 'POSTAGEM',
+                               p.postagem_id, 'RESTAURACAO', p.pontos, p.id_movimentacao,
+                               'POSTAGEM:' || p.postagem_id || ':RESTAURACAO:' || (n_restauracoes + 1), p.resolvido_em);
+                   END IF;
+               END LOOP;
+           END $$;
 
            UPDATE tb_postagens SET pontuacao_reconciliacao_pendente = FALSE
             WHERE resolvido_em IS NOT NULL AND pontuacao_reconciliacao_pendente;

@@ -220,19 +220,21 @@ def main():
             criar_usuario(cur, tipos_usuario["Administrador"], perfil="power", pioneiro=True)
 
         print("[4/10] Cooperativas + pontos de coleta...")
-        cooperativas = []  # (cooperativa_id, nome, usuario_id, qualidade)
+        cooperativas = []  # (cooperativa_id, nome, usuario_id, qualidade, cidade)
         for _ in range(escalar(db.N_COOPERATIVAS, fator)):
             u_coop, _ = criar_usuario(cur, tipos_usuario["Cooperativa"], perfil="power", pioneiro=True)
-            coop_id, coop_nome, qualidade = criar_cooperativa(cur, u_coop)
+            cidade_coop = fk.city()  # a cooperativa atende condomínios da própria cidade
+            coop_id, coop_nome, qualidade = criar_cooperativa(cur, u_coop, cidade_coop)
             vincular_categorias_cooperativa(cur, coop_id, categorias_reciclaveis)
             for _ in range(rng.randint(*PONTOS_COLETA_POR_COOPERATIVA)):
-                ponto_id = criar_ponto_coleta(cur, coop_id, coop_nome)
+                ponto_id = criar_ponto_coleta(cur, coop_id, coop_nome, cidade_coop)
                 vincular_categorias_ponto_coleta(cur, ponto_id, categorias_reciclaveis)
-            cooperativas.append((coop_id, coop_nome, u_coop, qualidade))
+            cooperativas.append((coop_id, coop_nome, u_coop, qualidade, cidade_coop))
 
         ocupantes = []  # dicts com usuario_id, condominio_id, torre_id, sindico_usuario_id
         votantes_por_condominio = defaultdict(list)  # vínculo aprovado e ativo, por condomínio
         sindico_por_condominio = {}
+        cidade_por_condominio = {}
 
         def novo_condominio(tipo, comercial):
             tipo_sindico = "Síndico Comercial" if comercial else "Síndico Residencial"
@@ -240,7 +242,11 @@ def main():
                                            perfil="power", comercial=comercial, pioneiro=True)
             sindico_id = criar_subtipo_sindico(cur, sindico_uid)
             nome = fk.edificio_comercial_name() if comercial else fk.condominio_name()
-            condominio_id = criar_condominio(cur, tipos_condominio[tipo], sindico_id, nome, comercial=comercial)
+            # o condomínio fica na cidade de uma das cooperativas, para sempre ter parceira na cidade
+            cidade = rng.choice(cooperativas)[4]
+            condominio_id = criar_condominio(cur, tipos_condominio[tipo], sindico_id, nome,
+                                             comercial=comercial, cidade=cidade)
+            cidade_por_condominio[condominio_id] = cidade
             # síndico também vota, com peso 3 (nível "sindico")
             criar_vinculo_condominio(cur, sindico_uid, condominio_id,
                                      nivel_confianca_id=niveis["sindico"], aprovado=True)
@@ -289,9 +295,11 @@ def main():
         qtd_visitas = 0
         parcerias = {}  # (condominio_id, cooperativa_id) -> datas e usuários do par, para o chat
         for condominio_id, sindico_uid in sindico_por_condominio.items():
-            parceiras = rng.sample(cooperativas, min(2, len(cooperativas)))
+            # parceria pela cidade: até 2 cooperativas da mesma cidade do condomínio
+            da_cidade = [c for c in cooperativas if c[4] == cidade_por_condominio[condominio_id]]
+            parceiras = rng.sample(da_cidade, min(2, len(da_cidade)))
             for _ in range(rng.randint(*AGENDAMENTOS_POR_CONDOMINIO)):
-                coop_id, _, coop_uid, qualidade = rng.choice(parceiras)
+                coop_id, _, coop_uid, qualidade, _ = rng.choice(parceiras)
                 data_inicio = AGORA + timedelta(days=rng.uniform(-DIAS_HISTORICO, 45))
                 futuro = data_inicio > AGORA
                 if futuro:

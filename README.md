@@ -24,9 +24,8 @@ O projeto ainda está em desenvolvimento e as próximas atualizações serão vo
 - [x] Perfis de engajamento, abandono, sazonalidade e campanha para análises com sinal real
 - [x] Carga em lote (`execute_values` + loops no servidor), pensada para a latência do Aiven
 - [x] Escalas `leve` / `medio` / `pesado`
-- [ ] Datar `tb_log_auditoria.executado_em` com a data do evento (hoje todas as linhas ficam com a data da carga)
-- [ ] Casar cooperativa e condomínio pela cidade (hoje a parceria é sorteada)
-- [ ] Oscilações múltiplas de pontuação (mais de um ESTORNO/RESTAURAÇÃO por postagem)
+- [x] Cooperativa e condomínio casados pela cidade (a cooperativa atende condomínios da própria cidade; agendamentos e chat só entre pares da mesma cidade)
+- [x] Oscilações múltiplas de pontuação: o ledger reproduz os votos em ordem e registra cada queda (ESTORNO) e cada volta (RESTAURAÇÃO); ~4% das postagens têm votação disputada
 
 ## 💻 Pré-requisitos
 
@@ -223,6 +222,7 @@ SELECT data_referencia, dau, wau, mau, stickiness,
   FROM tb_metricas_dau
  ORDER BY data_referencia;
 ```
+
 </details>
 
 <details>
@@ -234,6 +234,7 @@ SELECT TO_CHAR(data_referencia, 'ID-Dy') AS dia_semana, ROUND(AVG(dau), 1) AS da
  WHERE data_referencia >= CURRENT_DATE - 90
  GROUP BY 1 ORDER BY 1;
 ```
+
 </details>
 
 <details>
@@ -247,6 +248,7 @@ SELECT mes_coorte, usuarios_coorte,
   FROM vw_retencao_coortes_mensais
  GROUP BY 1, 2 ORDER BY 1;
 ```
+
 </details>
 
 <details>
@@ -258,6 +260,7 @@ SELECT nome_tipo, ROUND(AVG(dau), 1) AS dau_medio, ROUND(AVG(minutos_medios), 1)
  WHERE data_atividade >= CURRENT_DATE - 30
  GROUP BY 1 ORDER BY 2 DESC;
 ```
+
 </details>
 
 <details>
@@ -270,6 +273,7 @@ SELECT c.nome_condominio,
   JOIN tb_condominios c ON c.id_condominio = m.condominio_id
  GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
 ```
+
 </details>
 
 <details>
@@ -284,6 +288,7 @@ SELECT cr.nome_categoria, cr.limite_pontos_diario AS teto,
          ON m.postagem_id = p.id_postagem AND m.tipo_movimentacao = 'CREDITO'
  GROUP BY 1, 2 ORDER BY 1;
 ```
+
 </details>
 
 <details>
@@ -296,6 +301,7 @@ SELECT p.triagem_automatica_aprovada AS triagem_aprovou, s.nome_status AS decisa
  WHERE p.resolvido_em IS NOT NULL
  GROUP BY 1, 2 ORDER BY 1, 2;
 ```
+
 </details>
 
 <details>
@@ -309,6 +315,7 @@ SELECT t.nome_cooperativa, t.taxa_comparecimento_percentual, ROUND(AVG(a.nota), 
   JOIN tb_avaliacoes_visitas_coletas a  ON a.visita_coleta_id = v.id_visita_coleta
  GROUP BY 1, 2 ORDER BY 2 DESC;
 ```
+
 </details>
 
 <details>
@@ -322,6 +329,7 @@ SELECT c.titulo_curso, a.ordem, COUNT(*) AS matriculas, COUNT(*) FILTER (WHERE u
  WHERE c.titulo_curso = 'Cidades Sustentáveis'
  GROUP BY 1, 2 ORDER BY 2;
 ```
+
 </details>
 
 <details>
@@ -334,6 +342,7 @@ SELECT c.nome_condominio, COUNT(*) AS abertas, MIN(p.data_limite_analise) AS ven
  WHERE p.resolvido_em IS NULL
  GROUP BY 1 ORDER BY 2 DESC;
 ```
+
 </details>
 
 ## ☁️ Notas sobre o Aiven Free Tier

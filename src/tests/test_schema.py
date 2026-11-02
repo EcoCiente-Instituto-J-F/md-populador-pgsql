@@ -9,8 +9,8 @@ SCHEMA = (Path(__file__).resolve().parents[2] / "sql" / "ecociente_schema.sql").
 
 def test_colunas_esperadas():
     esperado = colunas_esperadas(SCHEMA)
-    assert len(esperado) == 49, "o schema tem 49 tabelas"
-    assert sum(len(c) for c in esperado.values()) == 301, "301 colunas no total"
+    assert len(esperado) == 50, "o schema tem 50 tabelas (o Data Mart fica em outro arquivo)"
+    assert sum(len(c) for c in esperado.values()) == 300, "300 colunas no total (as filhas de auditoria só contam as colunas próprias: o resto é herdado)"
     assert esperado["tb_autenticacoes_api"] == {
         "id_autenticao_api", "usuario_id", "token", "tipo_token", "criado_em", "expira_em"}
     assert "tb_metricas_dau" in esperado, "tabelas com IF NOT EXISTS também contam"

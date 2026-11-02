@@ -153,9 +153,13 @@ class FakerBR:
     def bairro(self):
         return self._r().choice(self._bairros)
 
-    def address_tuple(self):
-        """Retorna (uf, cidade, cep, logradouro, numero) -- colunas de tb_enderecos."""
-        uf, cidade, _lat_base, _lng_base = self._r().choice(self._estados_cidades)
+    def address_tuple(self, cidade=None):
+        """Retorna (uf, cidade, cep, logradouro, numero) -- colunas de tb_enderecos.
+        Com `cidade`, o endereço cai nela (uf correspondente); sem, a cidade é sorteada."""
+        if cidade is None:
+            uf, cidade, _lat_base, _lng_base = self._r().choice(self._estados_cidades)
+        else:
+            uf = next(e[0] for e in self._estados_cidades if e[1] == cidade)
         return (
             uf, cidade,
             self.cep(),
