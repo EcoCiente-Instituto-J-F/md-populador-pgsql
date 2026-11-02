@@ -290,7 +290,14 @@ Um agendamento tem um **solicitante** (`solicitado_por_usuario_id`) e um **lado 
 
 #### 7.7 Dados sensíveis
 
-`senha_hash` guarda só o hash; `token_hash` da recuperação de senha também. O CPF é `UNIQUE`. O **e-mail do usuário não tem `UNIQUE`** no schema atual: é um ponto de atenção declarado (ver Limites).
+`senha_hash` guarda só o hash; `token_hash` da recuperação de senha também. O CPF é `UNIQUE`.
+
+**O e-mail do usuário não é `UNIQUE`, de propósito.**
+- *Feito:* `tb_usuarios.email_usuario` é obrigatório (`NOT NULL`), mas não tem restrição de unicidade.
+- *Por quê:* o mesmo e-mail pode ser usado por um usuário que é morador residencial e também industrial. Com `UNIQUE`, o segundo cadastro com o mesmo e-mail seria barrado.
+- *Descartado:* `UNIQUE (email_usuario)`.
+- *Por que a melhor:* a unicidade que o negócio exige está no que identifica a pessoa e o papel (o CPF é `UNIQUE`, e cada subtipo tem `UNIQUE (usuario_id)`), e não no e-mail, que é um dado de contato e pode se repetir entre os papéis da mesma pessoa.
+- *Consequência assumida:* o e-mail sozinho não identifica um usuário, então a autenticação não pode depender só dele para escolher o cadastro.
 
 ### O que foi verificado
 
@@ -312,7 +319,6 @@ Um agendamento tem um **solicitante** (`solicitado_por_usuario_id`) e um **lado 
 | Média | As permissões das 8 tabelas incluídas no catálogo são **propostas** a partir do comportamento do código. | A equipe deve confirmar. |
 | Média | Tempos de backup e restauração foram medidos na escala `leve`, num PostgreSQL local, sem rede. Contra o Neon entram latência e o tamanho real. | Declarado em "O que este documento não afirma". |
 | Média | O que o plano free do Neon cobre além de 1 GB (recuperação, suspensão por inatividade) não foi verificado. | A conferir no console; o documento não afirma nada disso. |
-| Média | O e-mail de `tb_usuarios` não tem `UNIQUE`: dois usuários podem ter o mesmo e-mail. | Ponto de atenção; decidir se deve ser único. |
 | Baixa | `possui_recorrencia` em `tb_agendamentos_coletas` não é mantida por trigger; quem grava é a aplicação. | Declarado em 1.1. |
 | Baixa | `restore.sh -t ... --truncar` não usa `CASCADE`; tabelas referenciadas por FK precisam ser listadas juntas. | Escolha de segurança, documentada. |
 | Baixa | O `.ps1` foi validado de ponta a ponta no PowerShell 7 (contêiner). No Windows PowerShell 5.1 foi até a checagem do `pg_dump`. | Documentado em "Como medimos". |

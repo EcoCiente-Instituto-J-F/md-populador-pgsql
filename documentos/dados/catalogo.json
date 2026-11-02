@@ -527,7 +527,7 @@
             "Se a conta for desativada, é só marcar ativo=false (exclusão lógica); a exclusão física arrasta o subtipo (síndico, morador ou cooperativa) junto."
           ],
           "observacoes": [
-            "Diferente da versão anterior, email_usuario não tem UNIQUE explícito neste script — confirmar se é intencional ou se falta o constraint.",
+            "email_usuario não tem UNIQUE de propósito: o mesmo e-mail pode ser usado por um usuário que é morador residencial e também industrial.",
             "O campo antes chamado \"CPF/CNPJ\" virou só \"cpf\" — o CNPJ da cooperativa agora mora em tb_cooperativas.cnpj_cooperativa.",
             "Senha sempre armazenada em hash, nunca em texto puro."
           ]
