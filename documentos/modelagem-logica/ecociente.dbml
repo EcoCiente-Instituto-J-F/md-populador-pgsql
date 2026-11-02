@@ -1,0 +1,1060 @@
+// ============================================================================
+// ECOCIENTE | MODELAGEM (DBML)
+// Origem: ecociente_schema.sql (OLTP, 49 tabelas) + ecociente_datamart.sql (9 tabelas)
+// Dialeto de origem: PostgreSQL 14+
+//
+// Nao representados em DBML: views (vw_*), functions, procedures, triggers,
+// indices parciais (WHERE) e ordenacao DESC de indices. Onde relevante, ficam
+// como note.
+// ============================================================================
+
+Project ecociente {
+  database_type: 'PostgreSQL'
+  Note: 'EcoCiente - plataforma de reciclagem em condominios. OLTP normalizado + Data Mart (star schema).'
+}
+
+// ============================================================================
+// SECAO 1 - LOOKUPS
+// ============================================================================
+
+Table tb_lkp_tipos_usuarios {
+  id_tipo_usuario integer [pk, increment]
+  nome_tipo varchar(50) [not null]
+  descricao varchar(255)
+}
+
+Table tb_lkp_tipos_condominios {
+  id_tipo_condominio integer [pk, increment]
+  nome_tipo varchar(50) [not null]
+  descricao varchar(255)
+}
+
+Table tb_lkp_status_agendamentos {
+  id_status integer [pk, increment]
+  nome_status varchar(50) [not null, unique]
+}
+
+Table tb_lkp_dias_semanas {
+  id_dia_semana integer [pk, increment]
+  nome_dia varchar(20) [not null]
+}
+
+Table tb_lkp_categorias_residuos {
+  id_categoria integer [pk, increment]
+  nome_categoria varchar(100) [not null]
+  descricao_material varchar(255)
+  permite_reciclagem boolean [not null, default: true]
+  cor_identificacao varchar(10)
+  pontos_base integer [not null, default: 10, note: 'Pontos concedidos por postagem aprovada nessa categoria']
+  limite_pontos_diario integer [note: 'Teto diario de pontos por usuario nessa categoria. NULL = sem teto']
+
+  checks {
+    `pontos_base > 0` [name: 'ck_categorias_residuos_pontos_base']
+    `limite_pontos_diario IS NULL OR limite_pontos_diario >= 0` [name: 'ck_categorias_residuos_limite_pontos_diario']
+  }
+}
+
+Table tb_lkp_niveis_confianca {
+  id_nivel_confianca integer [pk, increment]
+  nome_nivel varchar(50) [not null, note: 'morador_comum | pessoa_confiavel | sindico']
+  peso_voto integer [not null, note: 'Peso do voto desse nivel na validacao de tb_postagens (1, 3, 3)']
+  descricao varchar(255)
+
+  checks {
+    `peso_voto > 0` [name: 'ck_niveis_confianca_peso_voto']
+  }
+}
+
+Table tb_lkp_status_validacoes_postagens {
+  id_status_validacao integer [pk, increment]
+  nome_status varchar(30) [not null, note: 'aprovada | em_analise | reprovada']
+  descricao varchar(255)
+}
+
+Table tb_lkp_tipos_votos_postagens {
+  id_tipo_voto integer [pk, increment]
+  nome_tipo varchar(30) [not null, note: 'aprovar | denunciar']
+}
+
+Table tb_lkp_motivos_denuncia {
+  id_motivo_denuncia integer [pk, increment]
+  descricao varchar(255) [not null, note: 'Nao e lixo reciclavel / Foto nao corresponde a categoria / Foto antiga-reutilizada / Spam-abuso']
+  ativo boolean [not null, default: true]
+}
+
+Table tb_lkp_tipos_eventos_auditados {
+  id_tipo_evento_auditado integer [pk, increment]
+  nome_evento varchar(50) [note: 'postagem / agendamento_coleta / usuario_condominio']
+  descricao varchar(255)
+}
+
+Table tb_lkp_tipos_operacoes_auditoria {
+  id_tipo_operacao integer [pk, increment]
+  nome_operacao varchar(50) [note: 'INSERT / UPDATE / DELETE']
+}
+
+// ============================================================================
+// SECAO 2 - ENDERECOS E USUARIOS
+// ============================================================================
+
+Table tb_enderecos {
+  id_endereco integer [pk, increment]
+  cep varchar(10)
+  estado char(2)
+  cidade varchar(100)
+  bairro varchar(100)
+  logradouro varchar(150)
+  numero varchar(20)
+  complemento varchar(100)
+}
+
+Table tb_usuarios {
+  id_usuario integer [pk, increment]
+  nome_usuario varchar(100) [not null]
+  email_usuario varchar(255) [not null]
+  senha_hash varchar(255) [not null]
+  data_nascimento date
+  cpf varchar(11) [unique]
+  url_avatar varchar(500)
+  ativo boolean [not null, default: true]
+  registro_em timestamptz [not null, default: `now()`]
+  tipo_usuario_id integer [not null]
+  endereco_id integer [not null]
+}
+
+Table tb_sindicos {
+  id_sindico integer [pk, increment]
+  usuario_id integer [not null, unique]
+}
+
+Table tb_telefones {
+  id_telefone integer [pk, increment]
+  usuario_id integer [not null]
+  numero_contato varchar(20) [not null]
+  tipo_telefone varchar(20)
+  ativo boolean [not null, default: true]
+}
+
+Table tb_notificacoes {
+  id_notificacao integer [pk, increment]
+  usuario_id integer [not null]
+  titulo_mensagem varchar(255) [not null]
+  corpo_mensagem text
+  tipo_notificacao varchar(50)
+  data_envio timestamptz [not null, default: `now()`]
+}
+
+Table tb_recuperacoes_senha {
+  id_esqueci_senha integer [pk, increment]
+  usuario_id integer [not null]
+  token_hash varchar(255) [not null, unique]
+  expira_em timestamptz [not null]
+  utilizado_em timestamptz
+
+  indexes {
+    usuario_id [name: 'idx_esqueci_senha_usuario_id']
+  }
+}
+
+Table tb_autenticacoes_api {
+  id_autenticao_api integer [pk, increment]
+  usuario_id integer [not null]
+  token text [not null, unique]
+  tipo_token varchar(20) [not null, default: 'Bearer']
+  criado_em timestamptz [not null, default: `now()`]
+  expira_em integer [not null]
+
+  checks {
+    `tipo_token = 'Bearer'` [name: 'ck_autenticao_api_token_type']
+    `expira_em > 0` [name: 'ck_autenticao_api_expira_em']
+  }
+}
+
+// ============================================================================
+// SECAO 3 - CONDOMINIOS E ESTRUTURA FISICA
+// ============================================================================
+
+Table tb_condominios {
+  id_condominio integer [pk, increment]
+  nome_condominio varchar(255) [not null]
+  cnpj varchar(18)
+  codigo_acesso varchar(20)
+  ativo boolean [not null, default: true]
+  tipo_condominio_id integer [not null]
+  sindico_id integer
+  endereco_id integer [unique]
+  url_foto varchar(500) [note: 'URL da foto geral do condominio (fachada). Nulo = sem foto cadastrada']
+}
+
+Table tb_torres {
+  id_torre integer [pk, increment]
+  nome_torre varchar(100) [not null]
+  condominio_id integer [not null]
+
+  indexes {
+    (condominio_id, nome_torre) [unique, name: 'torres_index_0']
+    (id_torre, condominio_id) [unique, name: 'uq_torres_id_condominio', note: 'Alvo da FK composta de tb_moradores: garante torre do mesmo condominio']
+  }
+}
+
+Table tb_moradores {
+  id_morador integer [pk, increment]
+  condominio_id integer [not null]
+  usuario_id integer [not null, unique]
+  torre_id integer [note: 'Torre onde o morador mora. Nulo em condominio sem torres (comercial). A FK composta impede torre de outro condominio']
+
+  indexes {
+    condominio_id [name: 'idx_moradores_condominio_id']
+    (torre_id, condominio_id) [name: 'idx_moradores_torre_condominio', note: 'Parcial: WHERE torre_id IS NOT NULL']
+  }
+}
+
+// ============================================================================
+// SECAO 4 - COOPERATIVAS E PONTOS DE COLETA
+// ============================================================================
+
+Table tb_cooperativas {
+  id_cooperativa integer [pk, increment]
+  cnpj_cooperativa varchar(18) [not null]
+  nome_cooperativa varchar(255) [not null]
+  email_cooperativa varchar(255)
+  telefone_cooperativa varchar(20)
+  data_cadastro timestamptz [not null, default: `now()`]
+  usuario_id integer [unique]
+  endereco_id integer [unique]
+}
+
+Table tb_pontos_coletas {
+  id_ponto_coleta integer [pk, increment]
+  nome_ponto varchar(255) [not null]
+  endereco_id integer
+  cooperativa_id integer
+  horario_abertura time
+  horario_fechamento time
+  ativo boolean [not null, default: true]
+}
+
+Table tb_rel_cooperativas_categorias_materiais {
+  id_cooperativa_categoria integer [pk, increment]
+  cooperativa_id integer [not null]
+  categoria_residuo_id integer [not null]
+
+  indexes {
+    (cooperativa_id, categoria_residuo_id) [unique, name: 'cooperativas_categorias_materiais_index_1']
+  }
+}
+
+Table tb_rel_pontos_coletas_categorias {
+  id_ponto_coleta_categoria integer [pk, increment]
+  ponto_coleta_id integer [not null]
+  categoria_residuo_id integer [not null]
+
+  indexes {
+    (ponto_coleta_id, categoria_residuo_id) [unique, name: 'pontos_coletas_categorias_index_2']
+  }
+}
+
+// ============================================================================
+// SECAO 5 - VINCULO USUARIO x CONDOMINIO (CONFIANCA)
+// ============================================================================
+
+Table tb_rel_usuarios_condominios {
+  id_usuario_condominio integer [pk, increment]
+  usuario_id integer [not null]
+  condominio_id integer [not null]
+  data_entrada timestamptz [not null, default: `now()`]
+  data_saida timestamptz
+  aprovado boolean [not null, default: false]
+  aprovado_por_usuario_id integer
+  nivel_confianca_id integer [not null, default: 1, note: 'Default = morador_comum (id 1)']
+  trust_score decimal(6,2) [not null, note: 'Score composto usado para promover a pessoa_confiavel']
+  postagens_validadas_sem_contestacao integer [not null]
+  denuncias_realizadas integer [not null]
+  denuncias_procedentes integer [not null, note: 'Denuncias cujo veredito final concordou com o denunciante']
+  taxa_acerto_denuncias decimal(5,2) [note: 'denuncias_procedentes / denuncias_realizadas * 100, recalculado pela aplicacao']
+
+  indexes {
+    (usuario_id, condominio_id) [unique, name: 'usuarios_condominios_index_5']
+  }
+
+  checks {
+    `postagens_validadas_sem_contestacao >= 0` [name: 'ck_usuarios_condominios_postagens_validadas']
+    `denuncias_realizadas >= 0` [name: 'ck_usuarios_condominios_denuncias_realizadas']
+    `denuncias_procedentes >= 0 AND denuncias_procedentes <= denuncias_realizadas` [name: 'ck_usuarios_condominios_denuncias_procedentes']
+    `taxa_acerto_denuncias IS NULL OR taxa_acerto_denuncias BETWEEN 0 AND 100` [name: 'ck_usuarios_condominios_taxa_acerto_denuncias']
+  }
+}
+
+// ============================================================================
+// SECAO 6 - POSTAGENS E MODERACAO
+// ============================================================================
+
+Table tb_postagens {
+  id_postagem integer [pk, increment]
+  usuario_id integer [not null]
+  condominio_id integer [not null, note: 'Usado pela aplicacao para montar a chave do ranking no Redis']
+  torre_id integer [note: 'Nulo quando o condominio nao possui torres (ex.: comercial)']
+  categoria_id integer [not null]
+  url_foto varchar(500) [not null]
+  hash_foto varchar(128) [not null, unique, note: 'Hash (ex.: SHA-256) do arquivo - impede reuso da mesma foto']
+  capturada_em timestamptz [not null, note: 'Timestamp de captura da camera, validado contra data_postagem']
+  data_postagem timestamptz [not null, default: `now()`]
+  status_validacao_id integer [not null, default: 1, note: 'Enquanto resolvido_em IS NULL, status aprovada = APROVACAO PROVISORIA']
+  saldo_confianca integer [not null, default: 0, note: 'Soma dos pesos de voto: aprovacoes somam, denuncias subtraem']
+  pontuacao_ativa boolean [not null, default: true, note: 'Vira FALSE ao atingir saldo <= -5; volta a TRUE quando saldo >= 0 dentro da janela']
+  pontuacao_reconciliacao_pendente boolean [not null, default: false, note: 'TRUE quando a API precisa reconciliar CREDITO/ESTORNO/RESTAURACAO no ledger']
+  triagem_automatica_aprovada boolean [note: 'Checagem automatica fraca. NULL = ainda nao processada']
+  triagem_automatica_confianca decimal(5,2)
+  data_limite_analise timestamptz [not null, default: `now() + interval '24 hours'`, note: 'Prazo maximo para a comunidade validar/derrubar a postagem']
+  resolvido_em timestamptz [note: 'Fim da janela comunitaria ou decisao manual; NULL = ainda em validacao']
+
+  indexes {
+    (data_limite_analise, resolvido_em) [name: 'idx_postagens_janela_validacao']
+    (usuario_id, categoria_id, data_postagem) [name: 'idx_postagens_usuario_categoria_data']
+    (condominio_id, data_limite_analise) [name: 'idx_postagens_pendentes_moderacao', note: 'Parcial: WHERE resolvido_em IS NULL']
+    (condominio_id, status_validacao_id) [name: 'idx_postagens_condominio_status']
+  }
+
+  checks {
+    `capturada_em <= data_postagem` [name: 'ck_postagens_capturada_em']
+    `triagem_automatica_confianca IS NULL OR triagem_automatica_confianca BETWEEN 0 AND 100` [name: 'ck_postagens_triagem_confianca']
+  }
+}
+
+Table tb_rel_votos_postagens {
+  id_voto integer [pk, increment]
+  postagem_id integer [not null]
+  usuario_id integer [not null]
+  tipo_voto_id integer [not null]
+  motivo_denuncia_id integer [note: 'Obrigatorio quando tipo_voto = denunciar']
+  peso_aplicado integer [not null, note: 'Snapshot do peso de voto do usuario no momento (1, 3...)']
+  comentario varchar(255)
+  votado_em timestamptz [not null, default: `now()`]
+
+  indexes {
+    (postagem_id, usuario_id) [unique, name: 'votos_postagens_index_7']
+    usuario_id [name: 'idx_votos_postagens_usuario_id']
+  }
+
+  checks {
+    `peso_aplicado > 0` [name: 'ck_votos_postagens_peso_aplicado']
+  }
+}
+
+// ============================================================================
+// SECAO 7 - AGENDAMENTOS DE COLETA
+// ============================================================================
+
+Table tb_agendamentos_coletas {
+  id_agendamento_coleta integer [pk, increment]
+  condominio_id integer [not null]
+  cooperativa_id integer [not null]
+  status_agendamento_id integer [not null]
+  data_inicio timestamptz [not null]
+  data_fim timestamptz
+  possui_recorrencia boolean [not null, default: false]
+  solicitado_por_usuario_id integer [not null, note: 'Usuario que abriu a solicitacao (sindico ou usuario da cooperativa)']
+  origem_solicitacao varchar(20) [not null, note: 'CONDOMINIO | COOPERATIVA - lado que abriu a solicitacao']
+  respondido_por_usuario_id integer [note: 'Quem aceitou/recusou. Sempre o lado oposto a origem_solicitacao']
+  respondido_em timestamptz [note: 'Momento do aceite/recusa']
+
+  indexes {
+    condominio_id [name: 'idx_agendamentos_coletas_condominio_id']
+    cooperativa_id [name: 'idx_agendamentos_coletas_cooperativa_id']
+  }
+
+  checks {
+    `origem_solicitacao IN ('CONDOMINIO', 'COOPERATIVA')` [name: 'ck_agendamentos_coletas_origem_solicitacao']
+    `(respondido_por_usuario_id IS NULL) = (respondido_em IS NULL)` [name: 'ck_agendamentos_coletas_resposta']
+    `data_fim IS NULL OR data_fim >= data_inicio` [name: 'ck_agendamentos_coletas_datas']
+  }
+}
+
+Table tb_visitas_coletas {
+  id_visita_coleta integer [pk, increment]
+  agendamento_coleta_id integer [not null]
+  data_visita timestamptz [not null]
+  foi_realizada boolean [not null, default: false]
+  houve_confirmacao boolean [not null, default: false]
+  confirmado_em timestamptz
+  observacao text
+
+  indexes {
+    agendamento_coleta_id [name: 'idx_visitas_coletas_agendamento_coleta_id']
+  }
+}
+
+Table tb_avaliacoes_visitas_coletas {
+  id_avaliacao integer [pk, increment]
+  visita_coleta_id integer [not null, unique]
+  usuario_avaliador_id integer [not null]
+  nota smallint [not null]
+  comentario varchar(500)
+  avaliado_em timestamptz [not null, default: `now()`]
+
+  checks {
+    `nota BETWEEN 1 AND 5` [name: 'ck_avaliacoes_visitas_coletas_nota']
+  }
+}
+
+Table tb_rel_recorrencias_agendamentos {
+  id_recorrencia_agendamento integer [pk, increment]
+  agendamento_coleta_id integer [not null]
+  dia_semana_id integer [not null]
+
+  indexes {
+    (agendamento_coleta_id, dia_semana_id) [unique, name: 'recorrencias_agendamentos_index_3']
+  }
+}
+
+// ============================================================================
+// SECAO 8 - EDUCACAO: CURSOS, AULAS E QUIZZES
+// ============================================================================
+
+Table tb_cursos {
+  id_curso integer [pk, increment]
+  titulo_curso varchar(255) [not null]
+  descricao_curso text
+  esta_ativo boolean [not null, default: true]
+}
+
+Table tb_aulas {
+  id_aula integer [pk, increment]
+  curso_id integer [not null]
+  titulo_aula varchar(255) [not null]
+  conteudo_aula text
+  ordem integer [not null]
+
+  indexes {
+    (curso_id, ordem) [unique, name: 'aulas_index_4']
+  }
+}
+
+Table tb_quizzes {
+  id_quiz integer [pk, increment]
+  curso_id integer [not null]
+  aula_id integer [not null, unique]
+  titulo_quiz varchar(255) [not null]
+  nota_minima_aprovacao decimal(5,2) [not null, default: 70]
+  pontos_recompensa integer [not null, note: 'Deve ser maior que tb_lkp_categorias_residuos.pontos_base de uma postagem comum']
+  ativo boolean [not null, default: true]
+  criado_em timestamptz [not null, default: `now()`]
+
+  checks {
+    `nota_minima_aprovacao BETWEEN 0 AND 100` [name: 'ck_quizzes_nota_minima_aprovacao']
+    `pontos_recompensa > 0` [name: 'ck_quizzes_pontos_recompensa']
+  }
+}
+
+Table tb_perguntas_quiz {
+  id_pergunta integer [pk, increment]
+  quiz_id integer [not null]
+  enunciado text [not null]
+  ordem integer [not null]
+  explicacao text [note: 'Explicacao da resposta correta, exibida apos responder. Nulo = sem explicacao']
+
+  indexes {
+    (quiz_id, ordem) [unique, name: 'perguntas_quiz_index_12']
+  }
+}
+
+Table tb_alternativas_quiz {
+  id_alternativa integer [pk, increment]
+  pergunta_id integer [not null]
+  texto_alternativa varchar(500) [not null]
+  correta boolean [not null, default: false]
+}
+
+Table tb_tentativas_quiz {
+  id_tentativa integer [pk, increment]
+  usuario_id integer [not null]
+  quiz_id integer [not null]
+  condominio_id integer [note: 'Snapshot do condominio do usuario na conclusao, para atribuicao de pontos ao ciclo']
+  torre_id integer [note: 'Snapshot da torre do usuario na conclusao']
+  nota decimal(5,2)
+  aprovado boolean [not null, default: false, note: 'Quando true e elegivel, a API registra CREDITO em tb_movimentacoes_pontos; so apos COMMIT sincroniza o Redis']
+  iniciado_em timestamptz [not null, default: `now()`]
+  concluido_em timestamptz
+
+  indexes {
+    (usuario_id, quiz_id, aprovado) [name: 'idx_tentativas_quiz_usuario_quiz_aprovado']
+    usuario_id [name: 'idx_tentativas_quiz_usuario_id']
+    quiz_id [name: 'idx_tentativas_quiz_quiz_id']
+    condominio_id [name: 'idx_tentativas_quiz_condominio_id']
+  }
+
+  checks {
+    `nota IS NULL OR nota BETWEEN 0 AND 100` [name: 'ck_tentativas_quiz_nota']
+  }
+}
+
+Table tb_rel_respostas_tentativas_quiz {
+  id_resposta integer [pk, increment]
+  tentativa_id integer [not null]
+  pergunta_id integer [not null]
+  alternativa_escolhida_id integer [not null]
+  correta boolean [not null]
+
+  indexes {
+    (tentativa_id, pergunta_id) [unique, name: 'respostas_tentativas_quiz_index_13']
+  }
+}
+
+Table tb_rel_usuarios_cursos {
+  id_usuario_curso integer [pk, increment]
+  usuario_id integer [not null]
+  aula_id integer [not null]
+  concluido boolean [not null, default: false]
+  data_inicio timestamptz [not null, default: `now()`]
+  data_conclusao timestamptz
+
+  indexes {
+    (usuario_id, aula_id) [unique, name: 'usuarios_cursos_index_6']
+  }
+}
+
+// ============================================================================
+// SECAO 9 - LEDGER OFICIAL DE PONTOS
+// ============================================================================
+
+Table tb_movimentacoes_pontos {
+  id_movimentacao bigint [pk, increment]
+  usuario_id integer [not null]
+  condominio_id integer
+  torre_id integer
+  categoria_id integer
+  origem_tipo varchar(20) [not null, note: 'POSTAGEM ou QUIZ']
+  postagem_id integer
+  tentativa_quiz_id integer
+  tipo_movimentacao varchar(20) [not null, note: 'CREDITO soma; ESTORNO subtrai; RESTAURACAO soma novamente o credito de referencia']
+  pontos integer [not null]
+  movimentacao_referencia_id bigint [note: 'ESTORNO/RESTAURACAO apontam para o CREDITO original da mesma origem e valor']
+  idempotency_key varchar(150) [not null, unique, note: 'Chave unica gerada pela API para tornar retries idempotentes']
+  ocorrido_em timestamptz [not null, default: `now()`]
+  redis_sincronizado boolean [not null, default: false, note: 'FALSE enquanto a projecao equivalente nao foi aplicada ao Redis']
+  redis_sincronizado_em timestamptz
+  tentativas_sync_redis integer [not null, default: 0]
+  ultimo_erro_redis text
+
+  indexes {
+    postagem_id [unique, name: 'uq_mov_pontos_credito_postagem', note: 'Parcial: WHERE origem_tipo = POSTAGEM AND tipo_movimentacao = CREDITO']
+    tentativa_quiz_id [unique, name: 'uq_mov_pontos_credito_quiz', note: 'Parcial: WHERE origem_tipo = QUIZ AND tipo_movimentacao = CREDITO']
+    (usuario_id, ocorrido_em) [name: 'idx_mov_pontos_usuario_ocorrido']
+    (condominio_id, ocorrido_em) [name: 'idx_mov_pontos_condominio_ocorrido']
+    postagem_id [name: 'idx_mov_pontos_postagem']
+    tentativa_quiz_id [name: 'idx_mov_pontos_tentativa_quiz']
+    (redis_sincronizado, ocorrido_em) [name: 'idx_mov_pontos_redis_pendente']
+    (postagem_id, tipo_movimentacao) [name: 'idx_mov_pontos_postagem_tipo']
+  }
+
+  checks {
+    `origem_tipo IN ('POSTAGEM', 'QUIZ')` [name: 'ck_mov_pontos_origem_tipo']
+    `tipo_movimentacao IN ('CREDITO', 'ESTORNO', 'RESTAURACAO')` [name: 'ck_mov_pontos_tipo_movimentacao']
+    `pontos > 0` [name: 'ck_mov_pontos_pontos_positivo']
+    `tentativas_sync_redis >= 0` [name: 'ck_mov_pontos_tentativas_sync']
+    `(origem_tipo = 'POSTAGEM' AND postagem_id IS NOT NULL AND tentativa_quiz_id IS NULL AND categoria_id IS NOT NULL) OR (origem_tipo = 'QUIZ' AND tentativa_quiz_id IS NOT NULL AND postagem_id IS NULL AND categoria_id IS NULL)` [name: 'ck_mov_pontos_origem_consistente']
+    `(tipo_movimentacao = 'CREDITO' AND movimentacao_referencia_id IS NULL) OR (tipo_movimentacao IN ('ESTORNO', 'RESTAURACAO') AND movimentacao_referencia_id IS NOT NULL)` [name: 'ck_mov_pontos_referencia_consistente']
+    `redis_sincronizado = FALSE OR redis_sincronizado_em IS NOT NULL` [name: 'ck_mov_pontos_sync_timestamp']
+  }
+
+  Note: 'Ledger oficial e imutavel de pontuacao. Redis deve ser reconstruivel integralmente a partir deste historico.'
+}
+
+// ============================================================================
+// SECAO 10 - AUDITORIA
+// ============================================================================
+
+Table tb_log_auditoria {
+  id_auditoria bigint [pk, increment]
+  tipo_evento_auditado_id integer [not null, note: 'Discriminador rapido (qual subtipo tem os detalhes)']
+  tipo_operacao_id integer [not null, note: 'INSERT / UPDATE / DELETE']
+  executado_por varchar(100) [not null, default: `current_user`, note: 'Usuario/role de banco que executou']
+  executado_em timestamptz [not null, default: `now()`, note: 'Momento da operacao']
+
+  indexes {
+    executado_em [name: 'idx_auditoria_log_executado_em', note: 'Criado como DESC']
+  }
+}
+
+Table tb_log_auditoria_postagens {
+  id_auditoria_postagem bigint [pk, increment]
+  auditoria_id bigint [not null, unique, note: 'Vinculo 1:1 com a mae']
+  postagem_id integer [not null, note: 'Postagem auditada']
+  status_validacao_anterior_id integer
+  status_validacao_novo_id integer
+  saldo_confianca_anterior integer
+  saldo_confianca_novo integer
+}
+
+Table tb_log_auditoria_agendamentos_coletas {
+  id_auditoria_agendamento integer [pk, increment]
+  auditoria_id bigint [not null, unique, note: 'Vinculo 1:1 com a mae']
+  agendamento_coleta_id integer [not null, note: 'Agendamento auditado']
+  status_anterior_id integer
+  status_novo_id integer
+  data_inicio_anterior timestamptz
+  data_inicio_novo timestamptz
+  data_fim_anterior timestamptz
+  data_fim_novo timestamptz
+}
+
+Table tb_log_auditoria_usuarios_condominios {
+  id_auditoria_usuario_condominio integer [pk, increment]
+  auditoria_id bigint [not null, unique, note: 'Vinculo 1:1 com a mae']
+  usuario_condominio_id integer [not null, note: 'Vinculo auditado']
+  aprovado_anterior boolean
+  aprovado_novo boolean
+  data_saida_anterior timestamptz
+  data_saida_novo timestamptz
+}
+
+// ============================================================================
+// SECAO 15 - DAU
+// ============================================================================
+
+Table tb_atividades_diarias_usuarios {
+  id_atividade_diaria bigint [pk, increment]
+  usuario_id integer [not null]
+  data_atividade date [not null, note: 'Dia civil no fuso America/Sao_Paulo']
+  plataforma varchar(10) [not null, note: 'Plataforma predominante do dia: android | ios | web']
+  qtd_sessoes smallint [not null, default: 1]
+  minutos_ativos smallint [not null, default: 0]
+  qtd_acoes integer [not null, default: 0, note: 'Eventos relevantes no dia (postagens, votos, aulas, quizzes, navegacao)']
+  primeira_atividade_em timestamptz [not null]
+  ultima_atividade_em timestamptz [not null]
+
+  indexes {
+    (usuario_id, data_atividade) [unique, name: 'uq_atividades_diarias_usuario_data']
+    (data_atividade, usuario_id) [name: 'idx_atividades_diarias_data']
+  }
+
+  checks {
+    `plataforma IN ('android', 'ios', 'web')` [name: 'ck_atividades_diarias_plataforma']
+    `qtd_sessoes > 0` [name: 'ck_atividades_diarias_qtd_sessoes']
+    `minutos_ativos >= 0` [name: 'ck_atividades_diarias_minutos']
+    `qtd_acoes >= 0` [name: 'ck_atividades_diarias_qtd_acoes']
+    `ultima_atividade_em >= primeira_atividade_em` [name: 'ck_atividades_diarias_intervalo']
+  }
+
+  Note: 'Base do DAU: uma linha por usuario por dia com atividade no app.'
+}
+
+Table tb_metricas_dau {
+  data_referencia date [pk]
+  dau integer [not null]
+  wau integer [not null, note: 'Usuarios distintos ativos nos 7 dias ate data_referencia (inclusive)']
+  mau integer [not null, note: 'Usuarios distintos ativos nos 30 dias ate data_referencia (inclusive)']
+  novos_usuarios integer [not null, note: 'Usuarios cuja primeira atividade registrada e data_referencia']
+  usuarios_retornantes integer [not null]
+  sessoes_total integer [not null]
+  minutos_medios decimal(6,2)
+  stickiness decimal(5,2) [note: 'DAU / MAU * 100']
+  calculado_em timestamptz [not null, default: `now()`]
+
+  checks {
+    `dau >= 0 AND wau >= dau AND mau >= wau` [name: 'ck_metricas_dau_contagens']
+    `novos_usuarios + usuarios_retornantes = dau` [name: 'ck_metricas_dau_novos']
+    `stickiness IS NULL OR stickiness BETWEEN 0 AND 100` [name: 'ck_metricas_dau_stickiness']
+  }
+
+  Note: 'Agregado diario de engajamento, gerado por sp_consolidar_metricas_dau.'
+}
+
+// ============================================================================
+// SECAO 16 - MIGRACAO
+// ============================================================================
+
+Table tb_migracao_ids_map {
+  entidade text [not null, note: 'Nome logico da entidade migrada (ex.: usuarios, condominios, postagens)']
+  legacy_id bigint [not null]
+  novo_id bigint [not null, note: 'Sem FK de proposito: aponta para tabelas diferentes conforme a entidade']
+  migrado_em timestamptz [not null, default: `now()`]
+
+  indexes {
+    (entidade, legacy_id) [pk, name: 'pk_migracao_ids_map']
+    (entidade, novo_id) [name: 'idx_migracao_ids_map_entidade_novo_id', note: 'Nao unico: varios ids legados podem convergir (deduplicacao)']
+  }
+
+  Note: 'Mapa de ids legado -> novo usado pelo RPA de migracao (idempotencia e resolucao de FKs)'
+}
+
+// ============================================================================
+// SECAO 17 - CHAT COOPERATIVA x CONDOMINIO
+// ============================================================================
+
+Table tb_conversas {
+  id_conversa integer [pk, increment]
+  condominio_id integer [not null]
+  cooperativa_id integer [not null]
+  criada_em timestamptz [not null, default: `now()`]
+  ultima_mensagem_em timestamptz [note: 'Atualizado por trigger a cada mensagem; ordena a caixa de entrada']
+  ativa boolean [not null, default: true, note: 'FALSE bloqueia novas mensagens (ex.: parceria encerrada)']
+
+  indexes {
+    (condominio_id, cooperativa_id) [unique, name: 'uq_conversas_condominio_cooperativa']
+    (cooperativa_id, ultima_mensagem_em) [name: 'idx_conversas_cooperativa_ultima', note: 'Criado com ultima_mensagem_em DESC']
+    (condominio_id, ultima_mensagem_em) [name: 'idx_conversas_condominio_ultima', note: 'Criado com ultima_mensagem_em DESC']
+  }
+
+  Note: 'Canal de chat entre uma cooperativa e um condominio (sindico). Uma conversa por par.'
+}
+
+Table tb_mensagens_conversas {
+  id_mensagem bigint [pk, increment]
+  conversa_id integer [not null]
+  remetente_usuario_id integer [not null]
+  remetente_tipo varchar(20) [not null, note: 'COOPERATIVA | CONDOMINIO - validado contra o usuario por trigger']
+  conteudo text [not null]
+  enviada_em timestamptz [not null, default: `now()`]
+  lida_em timestamptz [note: 'Preenchido quando o destinatario abre a conversa. NULL = nao lida']
+
+  indexes {
+    (conversa_id, enviada_em) [name: 'idx_mensagens_conversas_conversa_enviada', note: 'Criado com enviada_em DESC']
+    (conversa_id, remetente_tipo) [name: 'idx_mensagens_conversas_nao_lidas', note: 'Parcial: WHERE lida_em IS NULL']
+  }
+
+  checks {
+    `remetente_tipo IN ('COOPERATIVA', 'CONDOMINIO')` [name: 'ck_mensagens_conversas_remetente_tipo']
+    `length(btrim(conteudo)) BETWEEN 1 AND 2000` [name: 'ck_mensagens_conversas_conteudo']
+    `lida_em IS NULL OR lida_em >= enviada_em` [name: 'ck_mensagens_conversas_lida_em']
+  }
+
+  Note: 'Mensagens do chat cooperativa x condominio.'
+}
+
+// ============================================================================
+// DATA MART (STAR SCHEMA)
+// ============================================================================
+
+Table dim_tempo {
+  sk_tempo integer [pk, note: 'Chave inteligente YYYYMMDD']
+  data_completa date [not null, unique]
+  ano integer [not null]
+  trimestre integer [not null]
+  mes integer [not null]
+  nome_mes varchar(20) [not null]
+  dia integer [not null]
+  dia_semana_numero integer [not null, note: '0 = domingo ... 6 = sabado (EXTRACT(DOW))']
+  nome_dia_semana varchar(20) [not null]
+  is_fim_de_semana boolean [not null]
+
+  Note: 'Dimensao temporal compartilhada pelos fatos. Grao: 1 linha por dia civil (America/Sao_Paulo).'
+}
+
+Table dim_usuario {
+  sk_usuario integer [pk, increment]
+  id_usuario integer [not null, unique, note: 'Chave natural (tb_usuarios)']
+  nome_usuario varchar(100)
+  email_usuario varchar(255) [note: 'PII - mantida por compatibilidade com producao. Nao expor em views de BI.']
+  tipo_usuario varchar(50)
+  ativo boolean
+  carregado_em timestamptz [not null, default: `now()`]
+
+  Note: 'Dimensao de usuarios (tb_usuarios + tb_lkp_tipos_usuarios). Grao: 1 linha por usuario.'
+}
+
+Table dim_condominio {
+  sk_condominio integer [pk, increment]
+  id_condominio integer [not null, unique, note: 'Chave natural (tb_condominios)']
+  nome_condominio varchar(255)
+  tipo_condominio varchar(50)
+  cidade varchar(100)
+  estado char(2)
+  ativo boolean
+  carregado_em timestamptz [not null, default: `now()`]
+
+  Note: 'Dimensao de condominios (tb_condominios + tipo + endereco). Grao: 1 linha por condominio.'
+}
+
+Table dim_cooperativa {
+  sk_cooperativa integer [pk, increment]
+  id_cooperativa integer [not null, unique, note: 'Chave natural (tb_cooperativas)']
+  nome_cooperativa varchar(255)
+  cidade varchar(100)
+  estado char(2)
+  carregado_em timestamptz [not null, default: `now()`]
+
+  Note: 'Dimensao de cooperativas (tb_cooperativas + endereco). Grao: 1 linha por cooperativa.'
+}
+
+Table dim_categoria_residuo {
+  sk_categoria integer [pk, increment]
+  id_categoria integer [not null, unique, note: 'Chave natural (tb_lkp_categorias_residuos)']
+  nome_categoria varchar(100)
+  permite_reciclagem boolean
+  pontos_base integer
+  limite_pontos_ciclo integer [note: 'Origem: tb_lkp_categorias_residuos.limite_pontos_diario (teto por ciclo diario)']
+  carregado_em timestamptz [not null, default: `now()`]
+
+  Note: 'Dimensao de categorias de residuo. Grao: 1 linha por categoria.'
+}
+
+Table dim_status_postagem {
+  sk_status_postagem integer [pk, increment]
+  id_status_validacao integer [not null, unique]
+  codigo varchar(30) [not null, unique]
+  descricao varchar(255)
+
+  Note: 'Dimensao de status de validacao de postagens (aprovada | em_analise | reprovada).'
+}
+
+Table dim_status_agendamento {
+  sk_status_agendamento integer [pk, increment]
+  id_status integer [not null, unique]
+  nome_status varchar(50)
+
+  Note: 'Dimensao de status de agendamento de coleta.'
+}
+
+Table fato_postagens {
+  sk_fato_postagem bigint [pk, increment]
+  id_postagem integer [not null, unique]
+  sk_tempo integer [not null]
+  sk_usuario integer [not null]
+  sk_condominio integer [not null]
+  sk_categoria integer [not null]
+  sk_status_postagem integer [not null]
+  qtd_postagens integer [not null, default: 1]
+  foi_aprovada boolean [not null, default: false]
+  pontos_base_categoria integer [not null, default: 0, note: 'Pontos base da categoria na config atual, inclusive em nao aprovadas (ponto teorico). Filtrar foi_aprovada para pontos efetivos.']
+
+  indexes {
+    sk_categoria [name: 'idx_fato_postagens_categoria']
+    sk_condominio [name: 'idx_fato_postagens_condominio']
+    sk_tempo [name: 'idx_fato_postagens_tempo']
+    sk_usuario [name: 'idx_fato_postagens_usuario']
+  }
+
+  Note: 'Fato de postagens de reciclagem. Grao: 1 linha por postagem (tb_postagens).'
+}
+
+Table fato_coletas {
+  sk_fato_coleta bigint [pk, increment]
+  id_visita_coleta integer [not null, unique]
+  sk_tempo integer [not null]
+  sk_condominio integer [not null]
+  sk_cooperativa integer [not null]
+  sk_status_agendamento integer [not null]
+  foi_realizada boolean [not null, default: false]
+  houve_confirmacao boolean [not null, default: false]
+  qtd_visitas integer [not null, default: 1]
+
+  indexes {
+    sk_condominio [name: 'idx_fato_coletas_condominio']
+    sk_cooperativa [name: 'idx_fato_coletas_cooperativa']
+    sk_tempo [name: 'idx_fato_coletas_tempo']
+  }
+
+  Note: 'Fato de coletas. Grao: 1 linha por visita de coleta (tb_visitas_coletas).'
+}
+
+// ============================================================================
+// RELACIONAMENTOS - OLTP
+// ============================================================================
+
+// Usuarios e enderecos
+Ref fk_usuarios_tipo_usuario_id: tb_usuarios.tipo_usuario_id > tb_lkp_tipos_usuarios.id_tipo_usuario
+Ref fk_usuarios_endereco_id: tb_usuarios.endereco_id > tb_enderecos.id_endereco
+Ref fk_sindicos_usuario_id: tb_sindicos.usuario_id - tb_usuarios.id_usuario
+Ref fk_telefones_usuario_id: tb_telefones.usuario_id > tb_usuarios.id_usuario
+Ref fk_notificacoes_usuario_id: tb_notificacoes.usuario_id > tb_usuarios.id_usuario
+Ref fk_esqueci_senha_usuario_id: tb_recuperacoes_senha.usuario_id > tb_usuarios.id_usuario
+Ref fk_autenticao_api_usuario_id: tb_autenticacoes_api.usuario_id > tb_usuarios.id_usuario
+
+// Condominios
+Ref fk_condominios_tipo_condominio_id: tb_condominios.tipo_condominio_id > tb_lkp_tipos_condominios.id_tipo_condominio
+Ref fk_condominios_sindico_id: tb_condominios.sindico_id > tb_sindicos.id_sindico
+Ref fk_condominios_endereco_id: tb_condominios.endereco_id - tb_enderecos.id_endereco
+Ref fk_torres_condominio_id: tb_torres.condominio_id > tb_condominios.id_condominio
+Ref fk_moradores_usuario_id: tb_moradores.usuario_id - tb_usuarios.id_usuario
+Ref fk_moradores_condominio_id: tb_moradores.condominio_id > tb_condominios.id_condominio
+Ref fk_moradores_torre_condominio: tb_moradores.(torre_id, condominio_id) > tb_torres.(id_torre, condominio_id)
+
+// Cooperativas e pontos de coleta
+Ref fk_cooperativas_usuario_id: tb_cooperativas.usuario_id - tb_usuarios.id_usuario
+Ref fk_cooperativas_endereco_id: tb_cooperativas.endereco_id - tb_enderecos.id_endereco
+Ref fk_pontos_coletas_endereco_id: tb_pontos_coletas.endereco_id > tb_enderecos.id_endereco
+Ref fk_pontos_coletas_cooperativa_id: tb_pontos_coletas.cooperativa_id > tb_cooperativas.id_cooperativa
+Ref fk_cooperativas_categorias_materiais_cooperativa_id: tb_rel_cooperativas_categorias_materiais.cooperativa_id > tb_cooperativas.id_cooperativa
+Ref fk_cooperativas_categorias_materiais_categoria_residuo_id: tb_rel_cooperativas_categorias_materiais.categoria_residuo_id > tb_lkp_categorias_residuos.id_categoria
+Ref fk_pontos_coletas_categorias_ponto_coleta_id: tb_rel_pontos_coletas_categorias.ponto_coleta_id > tb_pontos_coletas.id_ponto_coleta
+Ref fk_pontos_coletas_categorias_categoria_residuo_id: tb_rel_pontos_coletas_categorias.categoria_residuo_id > tb_lkp_categorias_residuos.id_categoria
+
+// Vinculo usuario x condominio
+Ref fk_usuarios_condominios_usuario_id: tb_rel_usuarios_condominios.usuario_id > tb_usuarios.id_usuario
+Ref fk_usuarios_condominios_condominio_id: tb_rel_usuarios_condominios.condominio_id > tb_condominios.id_condominio
+Ref fk_usuarios_condominios_aprovado_por_usuario_id: tb_rel_usuarios_condominios.aprovado_por_usuario_id > tb_usuarios.id_usuario
+Ref fk_usuarios_condominios_nivel_confianca_id: tb_rel_usuarios_condominios.nivel_confianca_id > tb_lkp_niveis_confianca.id_nivel_confianca
+
+// Postagens e votos
+Ref fk_postagens_usuario_id: tb_postagens.usuario_id > tb_usuarios.id_usuario
+Ref fk_postagens_condominio_id: tb_postagens.condominio_id > tb_condominios.id_condominio
+Ref fk_postagens_torre_id: tb_postagens.torre_id > tb_torres.id_torre
+Ref fk_postagens_categoria_id: tb_postagens.categoria_id > tb_lkp_categorias_residuos.id_categoria
+Ref fk_postagens_status_validacao_id: tb_postagens.status_validacao_id > tb_lkp_status_validacoes_postagens.id_status_validacao
+Ref fk_votos_postagens_postagem_id: tb_rel_votos_postagens.postagem_id > tb_postagens.id_postagem [update: cascade]
+Ref fk_votos_postagens_usuario_id: tb_rel_votos_postagens.usuario_id > tb_usuarios.id_usuario
+Ref fk_votos_postagens_tipo_voto_id: tb_rel_votos_postagens.tipo_voto_id > tb_lkp_tipos_votos_postagens.id_tipo_voto
+Ref fk_votos_postagens_motivo_denuncia_id: tb_rel_votos_postagens.motivo_denuncia_id > tb_lkp_motivos_denuncia.id_motivo_denuncia
+
+// Agendamentos de coleta
+Ref fk_agendamentos_coletas_condominio_id: tb_agendamentos_coletas.condominio_id > tb_condominios.id_condominio
+Ref fk_agendamentos_coletas_cooperativa_id: tb_agendamentos_coletas.cooperativa_id > tb_cooperativas.id_cooperativa
+Ref fk_agendamentos_coletas_status_agendamento_id: tb_agendamentos_coletas.status_agendamento_id > tb_lkp_status_agendamentos.id_status
+Ref fk_agendamentos_coletas_solicitado_por_usuario_id: tb_agendamentos_coletas.solicitado_por_usuario_id > tb_usuarios.id_usuario
+Ref fk_agendamentos_coletas_respondido_por_usuario_id: tb_agendamentos_coletas.respondido_por_usuario_id > tb_usuarios.id_usuario
+Ref fk_visitas_coletas_agendamento_coleta_id: tb_visitas_coletas.agendamento_coleta_id > tb_agendamentos_coletas.id_agendamento_coleta
+Ref fk_avaliacoes_visitas_coletas_visita_coleta_id: tb_avaliacoes_visitas_coletas.visita_coleta_id - tb_visitas_coletas.id_visita_coleta
+Ref fk_avaliacoes_visitas_coletas_usuario_avaliador_id: tb_avaliacoes_visitas_coletas.usuario_avaliador_id > tb_usuarios.id_usuario
+Ref fk_recorrencias_agendamentos_agendamento_coleta_id: tb_rel_recorrencias_agendamentos.agendamento_coleta_id > tb_agendamentos_coletas.id_agendamento_coleta
+Ref fk_recorrencias_agendamentos_dia_semana_id: tb_rel_recorrencias_agendamentos.dia_semana_id > tb_lkp_dias_semanas.id_dia_semana
+
+// Educacao
+Ref fk_aulas_curso_id: tb_aulas.curso_id > tb_cursos.id_curso
+Ref fk_quizzes_aula_id: tb_quizzes.aula_id - tb_aulas.id_aula [update: cascade]
+Ref fk_quizzes_curso_id: tb_quizzes.curso_id > tb_cursos.id_curso
+Ref fk_perguntas_quiz_quiz_id: tb_perguntas_quiz.quiz_id > tb_quizzes.id_quiz [update: cascade]
+Ref fk_alternativas_quiz_pergunta_id: tb_alternativas_quiz.pergunta_id > tb_perguntas_quiz.id_pergunta [update: cascade]
+Ref fk_tentativas_quiz_usuario_id: tb_tentativas_quiz.usuario_id > tb_usuarios.id_usuario
+Ref fk_tentativas_quiz_quiz_id: tb_tentativas_quiz.quiz_id > tb_quizzes.id_quiz
+Ref fk_tentativas_quiz_condominio_id: tb_tentativas_quiz.condominio_id > tb_condominios.id_condominio
+Ref fk_tentativas_quiz_torre_id: tb_tentativas_quiz.torre_id > tb_torres.id_torre
+Ref fk_respostas_tentativas_quiz_tentativa_id: tb_rel_respostas_tentativas_quiz.tentativa_id > tb_tentativas_quiz.id_tentativa [update: cascade]
+Ref fk_respostas_tentativas_quiz_pergunta_id: tb_rel_respostas_tentativas_quiz.pergunta_id > tb_perguntas_quiz.id_pergunta
+Ref fk_respostas_tentativas_quiz_alternativa_escolhida_id: tb_rel_respostas_tentativas_quiz.alternativa_escolhida_id > tb_alternativas_quiz.id_alternativa
+Ref fk_usuarios_cursos_usuario_id: tb_rel_usuarios_cursos.usuario_id > tb_usuarios.id_usuario
+Ref fk_usuarios_cursos_aula_id: tb_rel_usuarios_cursos.aula_id > tb_aulas.id_aula
+
+// Ledger de pontos
+Ref fk_mov_pontos_usuario_id: tb_movimentacoes_pontos.usuario_id > tb_usuarios.id_usuario
+Ref fk_mov_pontos_condominio_id: tb_movimentacoes_pontos.condominio_id > tb_condominios.id_condominio
+Ref fk_mov_pontos_torre_id: tb_movimentacoes_pontos.torre_id > tb_torres.id_torre
+Ref fk_mov_pontos_categoria_id: tb_movimentacoes_pontos.categoria_id > tb_lkp_categorias_residuos.id_categoria
+Ref fk_mov_pontos_postagem_id: tb_movimentacoes_pontos.postagem_id > tb_postagens.id_postagem
+Ref fk_mov_pontos_tentativa_quiz_id: tb_movimentacoes_pontos.tentativa_quiz_id > tb_tentativas_quiz.id_tentativa
+Ref fk_mov_pontos_movimentacao_referencia_id: tb_movimentacoes_pontos.movimentacao_referencia_id > tb_movimentacoes_pontos.id_movimentacao
+
+// Auditoria
+Ref fk_auditoria_log_tipo_evento_auditado_id: tb_log_auditoria.tipo_evento_auditado_id > tb_lkp_tipos_eventos_auditados.id_tipo_evento_auditado
+Ref fk_auditoria_log_tipo_operacao_id: tb_log_auditoria.tipo_operacao_id > tb_lkp_tipos_operacoes_auditoria.id_tipo_operacao
+Ref fk_auditoria_postagens_auditoria_id: tb_log_auditoria_postagens.auditoria_id - tb_log_auditoria.id_auditoria
+Ref fk_auditoria_postagens_postagem_id: tb_log_auditoria_postagens.postagem_id > tb_postagens.id_postagem
+Ref fk_auditoria_postagens_status_validacao_anterior_id: tb_log_auditoria_postagens.status_validacao_anterior_id > tb_lkp_status_validacoes_postagens.id_status_validacao
+Ref fk_auditoria_postagens_status_validacao_novo_id: tb_log_auditoria_postagens.status_validacao_novo_id > tb_lkp_status_validacoes_postagens.id_status_validacao
+Ref fk_auditoria_agendamentos_coletas_auditoria_id: tb_log_auditoria_agendamentos_coletas.auditoria_id - tb_log_auditoria.id_auditoria
+Ref fk_auditoria_agendamentos_coletas_agendamento_coleta_id: tb_log_auditoria_agendamentos_coletas.agendamento_coleta_id > tb_agendamentos_coletas.id_agendamento_coleta
+Ref fk_auditoria_agendamentos_coletas_status_anterior_id: tb_log_auditoria_agendamentos_coletas.status_anterior_id > tb_lkp_status_agendamentos.id_status
+Ref fk_auditoria_agendamentos_coletas_status_novo_id: tb_log_auditoria_agendamentos_coletas.status_novo_id > tb_lkp_status_agendamentos.id_status
+Ref fk_auditoria_usuarios_condominios_auditoria_id: tb_log_auditoria_usuarios_condominios.auditoria_id - tb_log_auditoria.id_auditoria
+Ref fk_auditoria_usuarios_condominios_usuario_condominio_id: tb_log_auditoria_usuarios_condominios.usuario_condominio_id > tb_rel_usuarios_condominios.id_usuario_condominio
+
+// DAU
+Ref fk_atividades_diarias_usuario_id: tb_atividades_diarias_usuarios.usuario_id > tb_usuarios.id_usuario
+
+// Chat
+Ref fk_conversas_condominio_id: tb_conversas.condominio_id > tb_condominios.id_condominio
+Ref fk_conversas_cooperativa_id: tb_conversas.cooperativa_id > tb_cooperativas.id_cooperativa
+Ref fk_mensagens_conversas_conversa_id: tb_mensagens_conversas.conversa_id > tb_conversas.id_conversa
+Ref fk_mensagens_conversas_remetente_usuario_id: tb_mensagens_conversas.remetente_usuario_id > tb_usuarios.id_usuario
+
+// ============================================================================
+// RELACIONAMENTOS - DATA MART
+// ============================================================================
+
+Ref fato_postagens_sk_tempo_fkey: fato_postagens.sk_tempo > dim_tempo.sk_tempo
+Ref fato_postagens_sk_usuario_fkey: fato_postagens.sk_usuario > dim_usuario.sk_usuario
+Ref fato_postagens_sk_condominio_fkey: fato_postagens.sk_condominio > dim_condominio.sk_condominio
+Ref fato_postagens_sk_categoria_fkey: fato_postagens.sk_categoria > dim_categoria_residuo.sk_categoria
+Ref fato_postagens_sk_status_postagem_fkey: fato_postagens.sk_status_postagem > dim_status_postagem.sk_status_postagem
+
+Ref fato_coletas_sk_tempo_fkey: fato_coletas.sk_tempo > dim_tempo.sk_tempo
+Ref fato_coletas_sk_condominio_fkey: fato_coletas.sk_condominio > dim_condominio.sk_condominio
+Ref fato_coletas_sk_cooperativa_fkey: fato_coletas.sk_cooperativa > dim_cooperativa.sk_cooperativa
+Ref fato_coletas_sk_status_agendamento_fkey: fato_coletas.sk_status_agendamento > dim_status_agendamento.sk_status_agendamento
+
+// ============================================================================
+// GRUPOS (organizacao visual no diagrama)
+// ============================================================================
+
+TableGroup lookups {
+  tb_lkp_tipos_usuarios
+  tb_lkp_tipos_condominios
+  tb_lkp_status_agendamentos
+  tb_lkp_dias_semanas
+  tb_lkp_categorias_residuos
+  tb_lkp_niveis_confianca
+  tb_lkp_status_validacoes_postagens
+  tb_lkp_tipos_votos_postagens
+  tb_lkp_motivos_denuncia
+  tb_lkp_tipos_eventos_auditados
+  tb_lkp_tipos_operacoes_auditoria
+}
+
+TableGroup usuarios_e_acesso {
+  tb_enderecos
+  tb_usuarios
+  tb_sindicos
+  tb_telefones
+  tb_notificacoes
+  tb_recuperacoes_senha
+  tb_autenticacoes_api
+}
+
+TableGroup condominios {
+  tb_condominios
+  tb_torres
+  tb_moradores
+  tb_rel_usuarios_condominios
+}
+
+TableGroup cooperativas_e_coletas {
+  tb_cooperativas
+  tb_pontos_coletas
+  tb_rel_cooperativas_categorias_materiais
+  tb_rel_pontos_coletas_categorias
+  tb_agendamentos_coletas
+  tb_visitas_coletas
+  tb_avaliacoes_visitas_coletas
+  tb_rel_recorrencias_agendamentos
+  tb_conversas
+  tb_mensagens_conversas
+}
+
+TableGroup postagens_e_pontos {
+  tb_postagens
+  tb_rel_votos_postagens
+  tb_movimentacoes_pontos
+}
+
+TableGroup educacao {
+  tb_cursos
+  tb_aulas
+  tb_quizzes
+  tb_perguntas_quiz
+  tb_alternativas_quiz
+  tb_tentativas_quiz
+  tb_rel_respostas_tentativas_quiz
+  tb_rel_usuarios_cursos
+}
+
+TableGroup auditoria_e_metricas {
+  tb_log_auditoria
+  tb_log_auditoria_postagens
+  tb_log_auditoria_agendamentos_coletas
+  tb_log_auditoria_usuarios_condominios
+  tb_atividades_diarias_usuarios
+  tb_metricas_dau
+  tb_migracao_ids_map
+}
+
+TableGroup datamart {
+  dim_tempo
+  dim_usuario
+  dim_condominio
+  dim_cooperativa
+  dim_categoria_residuo
+  dim_status_postagem
+  dim_status_agendamento
+  fato_postagens
+  fato_coletas
+}
