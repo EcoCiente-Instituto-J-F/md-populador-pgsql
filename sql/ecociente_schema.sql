@@ -610,9 +610,6 @@ CREATE UNIQUE INDEX uq_mov_pontos_credito_quiz
     ON tb_movimentacoes_pontos (tentativa_quiz_id)
     WHERE origem_tipo = 'QUIZ' AND tipo_movimentacao = 'CREDITO';
 
-CREATE INDEX idx_esqueci_senha_usuario_id
-    ON tb_recuperacoes_senha (usuario_id);
-
 -- Indices minimos para historico, retry Redis e calculo de teto diario.
 CREATE INDEX idx_mov_pontos_usuario_ocorrido
     ON tb_movimentacoes_pontos (usuario_id, ocorrido_em);
@@ -679,39 +676,49 @@ EXECUTE FUNCTION fn_validar_referencia_movimentacao_pontos();
 
 
 -- ============================================================================
--- SECAO 10 - AUDITORIA (CLASS TABLE INHERITANCE)
+-- SECAO 10 - AUDITORIA (HERANCA DE TABELAS COM INHERITS)
 -- ============================================================================
 
 
+-- Herdanca com INHERITS (recurso nativo do PostgreSQL): as filhas copiam as colunas, o NOT NULL,
+-- o CHECK e o DEFAULT da mae. NAO sao herdados: PK, FK, UNIQUE e indices; por isso cada filha
+-- os declara de novo. A mae fica vazia (as linhas moram nas filhas), e SELECT na mae le todas.
+-- Identidade (GENERATED ... AS IDENTITY) tambem nao e herdada: a mae usa uma sequence compartilhada,
+-- entao o id e unico entre todas as filhas.
+CREATE SEQUENCE seq_log_auditoria AS BIGINT;
+
 CREATE TABLE tb_log_auditoria (
-    id_auditoria              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_auditoria              BIGINT       NOT NULL DEFAULT nextval('seq_log_auditoria'),
     tipo_evento_auditado_id   INTEGER      NOT NULL,
     tipo_operacao_id          INTEGER      NOT NULL,
     executado_por             VARCHAR(100) NOT NULL DEFAULT CURRENT_USER,
     executado_em              TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT pk_auditoria_log PRIMARY KEY (id_auditoria),
     CONSTRAINT fk_auditoria_log_tipo_evento_auditado_id FOREIGN KEY (tipo_evento_auditado_id) REFERENCES tb_lkp_tipos_eventos_auditados (id_tipo_evento_auditado),
     CONSTRAINT fk_auditoria_log_tipo_operacao_id FOREIGN KEY (tipo_operacao_id) REFERENCES tb_lkp_tipos_operacoes_auditoria (id_tipo_operacao)
 );
-COMMENT ON COLUMN tb_log_auditoria.tipo_evento_auditado_id IS 'Discriminador rapido (qual subtipo tem os detalhes)';
+ALTER SEQUENCE seq_log_auditoria OWNED BY tb_log_auditoria.id_auditoria;
+COMMENT ON TABLE tb_log_auditoria IS 'Mae da auditoria (INHERITS): colunas comuns a todo log. As linhas ficam nas filhas tb_log_auditoria_*; SELECT nesta tabela le todas.';
+COMMENT ON COLUMN tb_log_auditoria.id_auditoria IS 'Identificador unico entre todas as filhas (sequence seq_log_auditoria)';
+COMMENT ON COLUMN tb_log_auditoria.tipo_evento_auditado_id IS 'Discriminador rapido (qual filha tem os detalhes)';
 COMMENT ON COLUMN tb_log_auditoria.tipo_operacao_id IS 'INSERT / UPDATE / DELETE';
 COMMENT ON COLUMN tb_log_auditoria.executado_por IS 'Usuario/role de banco que executou';
 COMMENT ON COLUMN tb_log_auditoria.executado_em IS 'Momento da operacao';
 
 CREATE TABLE tb_log_auditoria_postagens (
-    id_auditoria_postagem          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    auditoria_id                   BIGINT  NOT NULL,
     postagem_id                    INTEGER NOT NULL,
     status_validacao_anterior_id   INTEGER,
     status_validacao_novo_id       INTEGER,
     saldo_confianca_anterior       INTEGER,
     saldo_confianca_novo           INTEGER,
-    CONSTRAINT fk_auditoria_postagens_auditoria_id FOREIGN KEY (auditoria_id) REFERENCES tb_log_auditoria (id_auditoria),
+    CONSTRAINT pk_auditoria_postagens PRIMARY KEY (id_auditoria),
+    CONSTRAINT fk_auditoria_postagens_tipo_evento_auditado_id FOREIGN KEY (tipo_evento_auditado_id) REFERENCES tb_lkp_tipos_eventos_auditados (id_tipo_evento_auditado),
+    CONSTRAINT fk_auditoria_postagens_tipo_operacao_id FOREIGN KEY (tipo_operacao_id) REFERENCES tb_lkp_tipos_operacoes_auditoria (id_tipo_operacao),
     CONSTRAINT fk_auditoria_postagens_postagem_id FOREIGN KEY (postagem_id) REFERENCES tb_postagens (id_postagem),
     CONSTRAINT fk_auditoria_postagens_status_validacao_anterior_id FOREIGN KEY (status_validacao_anterior_id) REFERENCES tb_lkp_status_validacoes_postagens (id_status_validacao),
-    CONSTRAINT fk_auditoria_postagens_status_validacao_novo_id FOREIGN KEY (status_validacao_novo_id) REFERENCES tb_lkp_status_validacoes_postagens (id_status_validacao),
-    CONSTRAINT uq_auditoria_postagens_auditoria_id UNIQUE (auditoria_id)
-);
-COMMENT ON COLUMN tb_log_auditoria_postagens.auditoria_id IS 'Vinculo 1:1 com a mae';
+    CONSTRAINT fk_auditoria_postagens_status_validacao_novo_id FOREIGN KEY (status_validacao_novo_id) REFERENCES tb_lkp_status_validacoes_postagens (id_status_validacao)
+) INHERITS (tb_log_auditoria);
+COMMENT ON TABLE tb_log_auditoria_postagens IS 'Filha de tb_log_auditoria (INHERITS): auditoria de tb_postagens.';
 COMMENT ON COLUMN tb_log_auditoria_postagens.postagem_id IS 'Postagem auditada';
 COMMENT ON COLUMN tb_log_auditoria_postagens.status_validacao_anterior_id IS 'Status de validacao antes da operacao';
 COMMENT ON COLUMN tb_log_auditoria_postagens.status_validacao_novo_id IS 'Status de validacao apos a operacao';
@@ -719,8 +726,6 @@ COMMENT ON COLUMN tb_log_auditoria_postagens.saldo_confianca_anterior IS 'saldo_
 COMMENT ON COLUMN tb_log_auditoria_postagens.saldo_confianca_novo IS 'saldo_confianca apos a operacao';
 
 CREATE TABLE tb_log_auditoria_agendamentos_coletas (
-    id_auditoria_agendamento  INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    auditoria_id              BIGINT  NOT NULL,
     agendamento_coleta_id     INTEGER NOT NULL,
     status_anterior_id        INTEGER,
     status_novo_id            INTEGER,
@@ -728,14 +733,14 @@ CREATE TABLE tb_log_auditoria_agendamentos_coletas (
     data_inicio_novo          TIMESTAMPTZ,
     data_fim_anterior         TIMESTAMPTZ,
     data_fim_novo             TIMESTAMPTZ,
-    CONSTRAINT fk_auditoria_agendamentos_coletas_auditoria_id FOREIGN KEY (auditoria_id) REFERENCES tb_log_auditoria (id_auditoria),
+    CONSTRAINT pk_auditoria_agendamentos_coletas PRIMARY KEY (id_auditoria),
+    CONSTRAINT fk_auditoria_agendamentos_coletas_tipo_evento_auditado_id FOREIGN KEY (tipo_evento_auditado_id) REFERENCES tb_lkp_tipos_eventos_auditados (id_tipo_evento_auditado),
+    CONSTRAINT fk_auditoria_agendamentos_coletas_tipo_operacao_id FOREIGN KEY (tipo_operacao_id) REFERENCES tb_lkp_tipos_operacoes_auditoria (id_tipo_operacao),
     CONSTRAINT fk_auditoria_agendamentos_coletas_agendamento_coleta_id FOREIGN KEY (agendamento_coleta_id) REFERENCES tb_agendamentos_coletas (id_agendamento_coleta),
     CONSTRAINT fk_auditoria_agendamentos_coletas_status_anterior_id FOREIGN KEY (status_anterior_id) REFERENCES tb_lkp_status_agendamentos (id_status),
-    CONSTRAINT fk_auditoria_agendamentos_coletas_status_novo_id FOREIGN KEY (status_novo_id) REFERENCES tb_lkp_status_agendamentos (id_status),
-    CONSTRAINT uq_auditoria_agendamentos_coletas_auditoria_id UNIQUE (auditoria_id)
-);
-COMMENT ON COLUMN tb_log_auditoria_agendamentos_coletas.id_auditoria_agendamento IS 'Identificador do subtipo';
-COMMENT ON COLUMN tb_log_auditoria_agendamentos_coletas.auditoria_id IS 'Vinculo 1:1 com a mae';
+    CONSTRAINT fk_auditoria_agendamentos_coletas_status_novo_id FOREIGN KEY (status_novo_id) REFERENCES tb_lkp_status_agendamentos (id_status)
+) INHERITS (tb_log_auditoria);
+COMMENT ON TABLE tb_log_auditoria_agendamentos_coletas IS 'Filha de tb_log_auditoria (INHERITS): auditoria de tb_agendamentos_coletas.';
 COMMENT ON COLUMN tb_log_auditoria_agendamentos_coletas.agendamento_coleta_id IS 'Agendamento auditado';
 COMMENT ON COLUMN tb_log_auditoria_agendamentos_coletas.status_anterior_id IS 'Status antes da operacao';
 COMMENT ON COLUMN tb_log_auditoria_agendamentos_coletas.status_novo_id IS 'Status apos a operacao';
@@ -745,19 +750,17 @@ COMMENT ON COLUMN tb_log_auditoria_agendamentos_coletas.data_fim_anterior IS 'da
 COMMENT ON COLUMN tb_log_auditoria_agendamentos_coletas.data_fim_novo IS 'data_fim apos a alteracao';
 
 CREATE TABLE tb_log_auditoria_usuarios_condominios (
-    id_auditoria_usuario_condominio  INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    auditoria_id                     BIGINT  NOT NULL,
     usuario_condominio_id            INTEGER NOT NULL,
     aprovado_anterior                BOOLEAN,
     aprovado_novo                    BOOLEAN,
     data_saida_anterior              TIMESTAMPTZ,
     data_saida_novo                  TIMESTAMPTZ,
-    CONSTRAINT fk_auditoria_usuarios_condominios_auditoria_id FOREIGN KEY (auditoria_id) REFERENCES tb_log_auditoria (id_auditoria),
-    CONSTRAINT fk_auditoria_usuarios_condominios_usuario_condominio_id FOREIGN KEY (usuario_condominio_id) REFERENCES tb_rel_usuarios_condominios (id_usuario_condominio),
-    CONSTRAINT uq_auditoria_usuarios_condominios_auditoria_id UNIQUE (auditoria_id)
-);
-COMMENT ON COLUMN tb_log_auditoria_usuarios_condominios.id_auditoria_usuario_condominio IS 'Identificador do subtipo';
-COMMENT ON COLUMN tb_log_auditoria_usuarios_condominios.auditoria_id IS 'Vinculo 1:1 com a mae';
+    CONSTRAINT pk_auditoria_usuarios_condominios PRIMARY KEY (id_auditoria),
+    CONSTRAINT fk_auditoria_usuarios_condominios_tipo_evento_auditado_id FOREIGN KEY (tipo_evento_auditado_id) REFERENCES tb_lkp_tipos_eventos_auditados (id_tipo_evento_auditado),
+    CONSTRAINT fk_auditoria_usuarios_condominios_tipo_operacao_id FOREIGN KEY (tipo_operacao_id) REFERENCES tb_lkp_tipos_operacoes_auditoria (id_tipo_operacao),
+    CONSTRAINT fk_auditoria_usuarios_condominios_usuario_condominio_id FOREIGN KEY (usuario_condominio_id) REFERENCES tb_rel_usuarios_condominios (id_usuario_condominio)
+) INHERITS (tb_log_auditoria);
+COMMENT ON TABLE tb_log_auditoria_usuarios_condominios IS 'Filha de tb_log_auditoria (INHERITS): auditoria de tb_rel_usuarios_condominios.';
 COMMENT ON COLUMN tb_log_auditoria_usuarios_condominios.usuario_condominio_id IS 'Vinculo auditado';
 COMMENT ON COLUMN tb_log_auditoria_usuarios_condominios.aprovado_anterior IS 'Valor de aprovado antes da operacao';
 COMMENT ON COLUMN tb_log_auditoria_usuarios_condominios.aprovado_novo IS 'Valor de aprovado apos a operacao';
@@ -1334,7 +1337,6 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_auditoria_id      BIGINT;
     v_tipo_evento_id    INTEGER;
     v_tipo_operacao_id  INTEGER;
 BEGIN
@@ -1344,17 +1346,15 @@ BEGIN
     SELECT id_tipo_operacao INTO v_tipo_operacao_id
       FROM tb_lkp_tipos_operacoes_auditoria WHERE nome_operacao = TG_OP;
 
-    INSERT INTO tb_log_auditoria (tipo_evento_auditado_id, tipo_operacao_id, executado_por, executado_em)
-    VALUES (v_tipo_evento_id, v_tipo_operacao_id, CURRENT_USER, now())
-    RETURNING id_auditoria INTO v_auditoria_id;
-
     IF TG_OP = 'INSERT' THEN
         INSERT INTO tb_log_auditoria_postagens (
-            auditoria_id, postagem_id,
+            tipo_evento_auditado_id, tipo_operacao_id, executado_por, executado_em,
+            postagem_id,
             status_validacao_anterior_id, status_validacao_novo_id,
             saldo_confianca_anterior, saldo_confianca_novo
         ) VALUES (
-            v_auditoria_id, NEW.id_postagem,
+            v_tipo_evento_id, v_tipo_operacao_id, CURRENT_USER, now(),
+            NEW.id_postagem,
             NULL, NEW.status_validacao_id,
             NULL, NEW.saldo_confianca
         );
@@ -1362,11 +1362,13 @@ BEGIN
 
     ELSIF TG_OP = 'UPDATE' THEN
         INSERT INTO tb_log_auditoria_postagens (
-            auditoria_id, postagem_id,
+            tipo_evento_auditado_id, tipo_operacao_id, executado_por, executado_em,
+            postagem_id,
             status_validacao_anterior_id, status_validacao_novo_id,
             saldo_confianca_anterior, saldo_confianca_novo
         ) VALUES (
-            v_auditoria_id, NEW.id_postagem,
+            v_tipo_evento_id, v_tipo_operacao_id, CURRENT_USER, now(),
+            NEW.id_postagem,
             OLD.status_validacao_id, NEW.status_validacao_id,
             OLD.saldo_confianca, NEW.saldo_confianca
         );
@@ -1374,11 +1376,13 @@ BEGIN
 
     ELSIF TG_OP = 'DELETE' THEN
         INSERT INTO tb_log_auditoria_postagens (
-            auditoria_id, postagem_id,
+            tipo_evento_auditado_id, tipo_operacao_id, executado_por, executado_em,
+            postagem_id,
             status_validacao_anterior_id, status_validacao_novo_id,
             saldo_confianca_anterior, saldo_confianca_novo
         ) VALUES (
-            v_auditoria_id, OLD.id_postagem,
+            v_tipo_evento_id, v_tipo_operacao_id, CURRENT_USER, now(),
+            OLD.id_postagem,
             OLD.status_validacao_id, NULL,
             OLD.saldo_confianca, NULL
         );
@@ -1403,7 +1407,6 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_auditoria_id      BIGINT;
     v_tipo_evento_id    INTEGER;
     v_tipo_operacao_id  INTEGER;
 BEGIN
@@ -1413,18 +1416,16 @@ BEGIN
     SELECT id_tipo_operacao INTO v_tipo_operacao_id
       FROM tb_lkp_tipos_operacoes_auditoria WHERE nome_operacao = TG_OP;
 
-    INSERT INTO tb_log_auditoria (tipo_evento_auditado_id, tipo_operacao_id, executado_por, executado_em)
-    VALUES (v_tipo_evento_id, v_tipo_operacao_id, CURRENT_USER, now())
-    RETURNING id_auditoria INTO v_auditoria_id;
-
     IF TG_OP = 'INSERT' THEN
         INSERT INTO tb_log_auditoria_agendamentos_coletas (
-            auditoria_id, agendamento_coleta_id,
+            tipo_evento_auditado_id, tipo_operacao_id, executado_por, executado_em,
+            agendamento_coleta_id,
             status_anterior_id, status_novo_id,
             data_inicio_anterior, data_inicio_novo,
             data_fim_anterior, data_fim_novo
         ) VALUES (
-            v_auditoria_id, NEW.id_agendamento_coleta,
+            v_tipo_evento_id, v_tipo_operacao_id, CURRENT_USER, now(),
+            NEW.id_agendamento_coleta,
             NULL, NEW.status_agendamento_id,
             NULL, NEW.data_inicio,
             NULL, NEW.data_fim
@@ -1433,12 +1434,14 @@ BEGIN
 
     ELSIF TG_OP = 'UPDATE' THEN
         INSERT INTO tb_log_auditoria_agendamentos_coletas (
-            auditoria_id, agendamento_coleta_id,
+            tipo_evento_auditado_id, tipo_operacao_id, executado_por, executado_em,
+            agendamento_coleta_id,
             status_anterior_id, status_novo_id,
             data_inicio_anterior, data_inicio_novo,
             data_fim_anterior, data_fim_novo
         ) VALUES (
-            v_auditoria_id, NEW.id_agendamento_coleta,
+            v_tipo_evento_id, v_tipo_operacao_id, CURRENT_USER, now(),
+            NEW.id_agendamento_coleta,
             OLD.status_agendamento_id, NEW.status_agendamento_id,
             OLD.data_inicio, NEW.data_inicio,
             OLD.data_fim, NEW.data_fim
@@ -1447,12 +1450,14 @@ BEGIN
 
     ELSIF TG_OP = 'DELETE' THEN
         INSERT INTO tb_log_auditoria_agendamentos_coletas (
-            auditoria_id, agendamento_coleta_id,
+            tipo_evento_auditado_id, tipo_operacao_id, executado_por, executado_em,
+            agendamento_coleta_id,
             status_anterior_id, status_novo_id,
             data_inicio_anterior, data_inicio_novo,
             data_fim_anterior, data_fim_novo
         ) VALUES (
-            v_auditoria_id, OLD.id_agendamento_coleta,
+            v_tipo_evento_id, v_tipo_operacao_id, CURRENT_USER, now(),
+            OLD.id_agendamento_coleta,
             OLD.status_agendamento_id, NULL,
             OLD.data_inicio, NULL,
             OLD.data_fim, NULL
@@ -1478,7 +1483,6 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_auditoria_id      BIGINT;
     v_tipo_evento_id    INTEGER;
     v_tipo_operacao_id  INTEGER;
 BEGIN
@@ -1488,17 +1492,15 @@ BEGIN
     SELECT id_tipo_operacao INTO v_tipo_operacao_id
       FROM tb_lkp_tipos_operacoes_auditoria WHERE nome_operacao = TG_OP;
 
-    INSERT INTO tb_log_auditoria (tipo_evento_auditado_id, tipo_operacao_id, executado_por, executado_em)
-    VALUES (v_tipo_evento_id, v_tipo_operacao_id, CURRENT_USER, now())
-    RETURNING id_auditoria INTO v_auditoria_id;
-
     IF TG_OP = 'INSERT' THEN
         INSERT INTO tb_log_auditoria_usuarios_condominios (
-            auditoria_id, usuario_condominio_id,
+            tipo_evento_auditado_id, tipo_operacao_id, executado_por, executado_em,
+            usuario_condominio_id,
             aprovado_anterior, aprovado_novo,
             data_saida_anterior, data_saida_novo
         ) VALUES (
-            v_auditoria_id, NEW.id_usuario_condominio,
+            v_tipo_evento_id, v_tipo_operacao_id, CURRENT_USER, now(),
+            NEW.id_usuario_condominio,
             NULL, NEW.aprovado,
             NULL, NEW.data_saida
         );
@@ -1506,11 +1508,13 @@ BEGIN
 
     ELSIF TG_OP = 'UPDATE' THEN
         INSERT INTO tb_log_auditoria_usuarios_condominios (
-            auditoria_id, usuario_condominio_id,
+            tipo_evento_auditado_id, tipo_operacao_id, executado_por, executado_em,
+            usuario_condominio_id,
             aprovado_anterior, aprovado_novo,
             data_saida_anterior, data_saida_novo
         ) VALUES (
-            v_auditoria_id, NEW.id_usuario_condominio,
+            v_tipo_evento_id, v_tipo_operacao_id, CURRENT_USER, now(),
+            NEW.id_usuario_condominio,
             OLD.aprovado, NEW.aprovado,
             OLD.data_saida, NEW.data_saida
         );
@@ -1518,11 +1522,13 @@ BEGIN
 
     ELSIF TG_OP = 'DELETE' THEN
         INSERT INTO tb_log_auditoria_usuarios_condominios (
-            auditoria_id, usuario_condominio_id,
+            tipo_evento_auditado_id, tipo_operacao_id, executado_por, executado_em,
+            usuario_condominio_id,
             aprovado_anterior, aprovado_novo,
             data_saida_anterior, data_saida_novo
         ) VALUES (
-            v_auditoria_id, OLD.id_usuario_condominio,
+            v_tipo_evento_id, v_tipo_operacao_id, CURRENT_USER, now(),
+            OLD.id_usuario_condominio,
             OLD.aprovado, NULL,
             OLD.data_saida, NULL
         );
@@ -1600,9 +1606,14 @@ SELECT id_auditoria, tipo_evento_auditado_id, tipo_operacao_id, executado_por, e
  WHERE executado_em >= now() - INTERVAL '30 days'
  ORDER BY executado_em DESC;
 
-CREATE INDEX IF NOT EXISTS idx_auditoria_log_executado_em
-    ON tb_log_auditoria (executado_em DESC);
--- DEPOIS: "Index Scan using idx_auditoria_log_executado_em", elimina o Sort explicito
+-- Indice NAO e herdado: a mae esta vazia, entao o indice vai em cada filha.
+CREATE INDEX IF NOT EXISTS idx_auditoria_postagens_executado_em
+    ON tb_log_auditoria_postagens (executado_em DESC);
+CREATE INDEX IF NOT EXISTS idx_auditoria_agendamentos_coletas_executado_em
+    ON tb_log_auditoria_agendamentos_coletas (executado_em DESC);
+CREATE INDEX IF NOT EXISTS idx_auditoria_usuarios_condominios_executado_em
+    ON tb_log_auditoria_usuarios_condominios (executado_em DESC);
+-- DEPOIS: o plano da mae vira "Append" sobre "Bitmap Index Scan on idx_auditoria_*_executado_em" nas filhas
 
 
 -- ----------------------------------------------------------------------------
@@ -2175,6 +2186,9 @@ CREATE TABLE tb_recuperacoes_senha (
     CONSTRAINT uq_esqueci_senha_token_hash
         UNIQUE (token_hash)
 );
+
+CREATE INDEX idx_esqueci_senha_usuario_id
+    ON tb_recuperacoes_senha (usuario_id);
 -- ----------------------------------------------------------------------------
 -- PROCEDURE 5: sp_consolidar_metricas_dau
 -- Recalcula tb_metricas_dau para cada dia do intervalo. Idempotente (UPSERT):
